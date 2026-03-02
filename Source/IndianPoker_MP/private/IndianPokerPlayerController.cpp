@@ -13,6 +13,7 @@ void AIndianPokerPlayerController::BeginPlay()
 
 	UWorld* World = GetWorld();
 	const ENetMode NetMode = World ? World->GetNetMode() : NM_Standalone;
+	FString MapName = World ? World->GetMapName() : TEXT("NoWorld");
 
 	const bool bAuth = HasAuthority();
 	const bool bLocal = IsLocalController();
@@ -26,8 +27,25 @@ void AIndianPokerPlayerController::BeginPlay()
 		(NetMode == NM_DedicatedServer) ? TEXT("DedicatedServer") :
 		(NetMode == NM_Client) ? TEXT("Client") : TEXT("Unknown");
 
-	UE_LOG(LogTemp, Warning, TEXT("[PC BeginPlay] NetMode=%s | HasAuthority=%d | IsLocal=%d | Name=%s"),
-		NetModeStr, bAuth ? 1 : 0, bLocal ? 1 : 0, *GetName());
+	UE_LOG(LogTemp, Warning, TEXT("[PC BeginPlay] Map=%s | NetMode=%s | HasAuthority=%d | IsLocal=%d | Name=%s"),
+		*MapName, NetModeStr, bAuth ? 1 : 0, bLocal ? 1 : 0, *GetName());
+
+	// Travel 후 PlayerState 유지되는지 확인용 디버깅
+	AIndianPokerPlayerState* PS = Cast<AIndianPokerPlayerState>(PlayerState);
+	if (PS)
+	{
+		//UE_LOG(LogTemp, Warning, TEXT("[PC][GameMapCheck] PS=%s | TestValue=%d"),
+		//	*PS->GetName(),
+		//	//*PS->GetUniqueId().ToString(),
+		//	PS->GetTestValue());   // Getter 함수 사용
+		UE_LOG(LogTemp, Warning,
+			TEXT("[PC][PSCHECK] Map=%s | PS=%s | PSAddr=%p | TestValue=%d"),
+			*MapName,
+			*GetNameSafe(PS),
+			PS,
+			PS ? PS->GetTestValue() : -1
+		);
+	}
 
 	// 약간 딜레이 후, PlayerState 출력 디버깅 (PlayerState 동기화 보장)
 	// PlayerState가 네트워크로 완전히 동기화 된 뒤에 출력하기 위해 딜레이 주는 것

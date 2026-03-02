@@ -31,7 +31,7 @@ void AIndianPokerGameModeBase::PostLogin(APlayerController* NewPlayer)
 
     // 플레이어마다 다른 값 주기(테스트용)
     // (1) 간단한 방식: 접속 순서 카운터
-    static int32 JoinCounter = 0;
+    //static int32 JoinCounter = 0;
     JoinCounter++;
 
     const int32 Value = JoinCounter * 100; // 100, 200, 300...

@@ -15,21 +15,8 @@ class INDIANPOKER_MP_API AIndianPokerPlayerState : public APlayerState
 	GENERATED_BODY()
 	
 public:
-	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+	AIndianPokerPlayerState() = default;
 
-	// 서버에서만 값 변경용 함수
-	void ServerSetTestValue(int32 NewValue);
-
-protected:
-	// 이렇게 바인딩해두면, 클라에서 해당 변수가 네트워크로 갱신(업뎃)되는 순간 
-	// 자동으로 OnRep_TestValue()를 호출
-	UPROPERTY(ReplicatedUsing = OnRep_TestValue)
-	int32 TestValue = 0;
-
-	UFUNCTION()
-	void OnRep_TestValue();
-
-public:
-	// PlayerController에서 PlayerState 디버깅 시 사용
-	int32 GetTestValue() const { return TestValue; }
+	// Day5: PlayerState에서 별도 Replicated 변수 사용 안 하면
+	// GetLifetimeReplicatedProps 오버라이드 필요 없음.
 };

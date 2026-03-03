@@ -1,118 +1,64 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-
 #include "IndianPokerGameStateBase.h"
 #include "Net/UnrealNetwork.h"
 #include "Engine/Engine.h"
-
+#include "IndianPokerPlayerState.h"
 
 AIndianPokerGameStateBase::AIndianPokerGameStateBase()
 {
 	// GameState는 기본적으로 Replicate 되지만, 명시해도 안전함
 	bReplicates = true;
+	CurrentPhase = EGamePhase::Lobby;
 }
 
 void AIndianPokerGameStateBase::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// 서버에서만 값 변경(권위)
+	// <임시> 일단 시작 Phase 확인용(스팸 방지로 1회만)
 	if (HasAuthority())
 	{
-		GetWorldTimerManager().SetTimer(
-			TestTimerHandle,
-			this,
-			&AIndianPokerGameStateBase::ServerTickTestNumber,
-			1.0f,
-			true
-		);
-
-		UE_LOG(LogTemp, Warning, TEXT("[GS][SETUP] Timer started on SERVER"));
-
-		//// PlayerState들이 생성된 뒤에 한번 초기값 세팅
-		//FTimerHandle InitHandle;
-		//GetWorldTimerManager().SetTimer(
-		//	InitHandle,
-		//	this,
-		//	&AIndianPokerGameStateBase::ServerInitPlayerStateTestValues,
-		//	1.0f,
-		//	false
-		//);
+		UE_LOG(LogTemp, Warning, TEXT("[GS][BeginPlay][SERVER] Initial Phase=%d"), (int32)CurrentPhase);
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[GS][SETUP] CLIENT - timer not started"));
+		UE_LOG(LogTemp, Warning, TEXT("[GS][BeginPlay][CLIENT] Initial Phase=%d"), (int32)CurrentPhase);
 	}
-
-	// 시작 시 현재 값 한번 찍기 (초기값 확인 용)
-	//OnRep_TestNumber();
 }
 
-void AIndianPokerGameStateBase::ServerTickTestNumber()
+void AIndianPokerGameStateBase::SetPhaseServer(EGamePhase NewPhase)
 {
 	// 방어코드: 혹시라도 클라에서 호출되면 즉시 차단
 	if (!HasAuthority())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[GS][SET] BLOCKED: called on CLIENT"));
+		UE_LOG(LogTemp, Warning, TEXT("[GS][SetPhaseServer] Blocked: called on CLIENT"));
 		return;
 	}
 
-	TestNumber++;
-
-	const ENetMode NetMode = GetWorld() ? GetWorld()->GetNetMode() : NM_Standalone;
-	UE_LOG(LogTemp, Warning, TEXT("[GS][SET] NetMode=%d Auth=1 TestNumber=%d"), (int32)NetMode, TestNumber);
-
-	// 리슨서버 창에서도 즉시 확인용(서버는 RepNotify가 안 불릴 수도 있어서 직접 출력)
-	if (GEngine)
+	if (CurrentPhase == NewPhase)
 	{
-		GEngine->AddOnScreenDebugMessage(100, 1.2f, FColor::Green,
-			FString::Printf(TEXT("[SERVER SET] TestNumber = %d"), TestNumber));
+		return;
 	}
-}
 
-void AIndianPokerGameStateBase::OnRep_TestNumber()
-{
-	const bool bAuth = HasAuthority();
-	const ENetMode NetMode = GetWorld() ? GetWorld()->GetNetMode() : NM_Standalone;
+	CurrentPhase = NewPhase;
 
-	UE_LOG(LogTemp, Warning, TEXT("[GS][ONREP] NetMode=%d Auth=%d TestNumber=%d"), (int32)NetMode, bAuth ? 1 : 0, TestNumber);
+	// 서버에서 변경 로그 (1회)
+	UE_LOG(LogTemp, Warning, TEXT("[GS][SERVER] Phase changed to %d"), (int32)CurrentPhase);
 
-	if (GEngine)
-	{
-		GEngine->AddOnScreenDebugMessage(101, 1.2f, FColor::Yellow,
-			FString::Printf(TEXT("[ONREP] Auth=%d TestNumber = %d"), bAuth ? 1 : 0, TestNumber));
-	}
+	// 서버는 OnRep가 자동 호출되지 않으니, 서버에서도 동일한 반응/로그가 필요하면 직접 호출 가능
+	// OnRep_CurrentPhase();
 }
 
 void AIndianPokerGameStateBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	DOREPLIFETIME(AIndianPokerGameStateBase, TestNumber);
+	DOREPLIFETIME(AIndianPokerGameStateBase, CurrentPhase);
 }
 
-#include "IndianPokerPlayerState.h"
-
-//void AIndianPokerGameStateBase::ServerInitPlayerStateTestValues()
-//{
-//	if (!HasAuthority())
-//	{
-//		UE_LOG(LogTemp, Warning, TEXT("[GS][PSINIT] BLOCKED on CLIENT"));
-//		return;
-//	}
-//
-//	UE_LOG(LogTemp, Warning, TEXT("[GS][PSINIT] SERVER init PlayerState test values. PlayerArray=%d"), PlayerArray.Num());
-//
-//	int32 Index = 0;
-//	for (APlayerState* PS : PlayerArray)
-//	{
-//		if (AIndianPokerPlayerState* IPS = Cast<AIndianPokerPlayerState>(PS))
-//		{
-//			const int32 Value = (Index + 1) * 100; // 100, 200...
-//			IPS->ServerSetTestValue(Value);
-//
-//			UE_LOG(LogTemp, Warning, TEXT("[GS][PSINIT] Set %s => %d"), *IPS->GetName(), Value);
-//			Index++;
-//		}
-//	}
-//}
+void AIndianPokerGameStateBase::OnRep_CurrentPhase()
+{
+	// 클라에서 동기화 되었는지 확인하는 핵심 로그(딱 1줄만 남기기)
+	UE_LOG(LogTemp, Warning, TEXT("[GS][OnRep][CLIENT] Phase replicated: %d"), (int32)CurrentPhase);
+}

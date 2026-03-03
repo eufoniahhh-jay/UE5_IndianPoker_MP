@@ -4,11 +4,16 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
+#include "InputActionValue.h"
 #include "IndianPokerPlayerController.generated.h"
 
 /**
  * 
  */
+
+class UInputMappingContext;
+class UInputAction;
+
 UCLASS()
 class INDIANPOKER_MP_API AIndianPokerPlayerController : public APlayerController
 {
@@ -16,15 +21,38 @@ class INDIANPOKER_MP_API AIndianPokerPlayerController : public APlayerController
 	
 protected:
 	virtual void BeginPlay() override;
-
-	void DebugPrintPlayerStates();
-
-protected:
 	virtual void SetupInputComponent() override;
 
 	// 이렇게 해두면 엔진이 내부적으로 알아서...
 	// Server_RequestIncrease()는 클라에서 호출
 	// _Implementation()은 서버에서 실행
-	UFUNCTION(Server, Reliable)
-	void Server_RequestIncrease();
+	// UFUNCTION(Server, Reliable)
+	// void Server_RequestIncrease();
+
+private:
+	// Day5 테스트: Host(서버)만 Phase 진행
+	void Input_AdvancePhase();
+
+private:
+	// IMC, IA 관련
+	// IMC / IA 에셋을 에디터에서 지정
+	UPROPERTY(EditDefaultsOnly, Category = "Input")
+	UInputMappingContext* IMC_Player = nullptr;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Input")
+	UInputAction* IA_Look = nullptr;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Input")
+	UInputAction* IA_AimLook = nullptr;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Input")
+	UInputAction* IA_Test = nullptr;
+
+	bool bAimLookHeld = false;
+
+	void OnAimLookStarted();
+	void OnAimLookCompleted();
+
+	void OnLookTriggered(const FInputActionValue& Value);
+	void OnTestPressed();
 };

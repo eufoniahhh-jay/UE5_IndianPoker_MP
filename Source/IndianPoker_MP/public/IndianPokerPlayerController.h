@@ -55,4 +55,23 @@ private:
 
 	void OnLookTriggered(const FInputActionValue& Value);
 	void OnTestPressed();
+
+private:
+	// Day6 Session 테스트용 함수
+	void TestHost();
+	void TestFind();
+	void TestJoin();
+	void TestDestroy();
+
+	UPROPERTY(EditDefaultsOnly, Category = "Input|Session")
+	UInputAction* IA_SessionHost;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Input|Session")
+	UInputAction* IA_SessionFind;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Input|Session")
+	UInputAction* IA_SessionJoin;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Input|Session")
+	UInputAction* IA_SessionDestroy;
 };

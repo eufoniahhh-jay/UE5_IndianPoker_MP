@@ -9,13 +9,19 @@
 #include "GameFramework/PlayerController.h"
 #include "EnhancedInputSubsystems.h"
 #include "EnhancedInputComponent.h"
+#include "InputActionValue.h"
 #include "InputMappingContext.h"
 #include "InputAction.h"
 #include "InputTriggers.h"
+#include "IndianPokerSessionSubsystem.h"
+#include "Engine/GameInstance.h"
+#include "Kismet/GameplayStatics.h"
 
 void AIndianPokerPlayerController::BeginPlay()
 {
 	Super::BeginPlay();
+
+	//UE_LOG(LogTemp, Warning, TEXT("[PC] Class=%s"), *GetClass()->GetPathName());
 
 	UWorld* World = GetWorld();
 	const ENetMode NetMode = World ? World->GetNetMode() : NM_Standalone;
@@ -36,6 +42,8 @@ void AIndianPokerPlayerController::BeginPlay()
 	UE_LOG(LogTemp, Warning, TEXT("[PC BeginPlay] Map=%s | NetMode=%s | HasAuthority=%d | IsLocal=%d | Name=%s"),
 		*MapName, NetModeStr, bAuth ? 1 : 0, bLocal ? 1 : 0, *GetName());
 
+	UE_LOG(LogTemp, Warning, TEXT("[PC][%s] Class=%s"), NetModeStr, *GetClass()->GetPathName());
+
 	// 로컬 플레이어(각 창)에서만 매핑 추가
 	if (ULocalPlayer* LP = GetLocalPlayer())
 	{
@@ -45,6 +53,15 @@ void AIndianPokerPlayerController::BeginPlay()
 			if (IMC_Player)
 			{
 				Subsys->AddMappingContext(IMC_Player, 0);
+
+				// 새 매핑 반영 강제
+				FModifyContextOptions Options;
+				Options.bForceImmediately = true;          // 즉시 반영(있으면 켜기)
+				Options.bIgnoreAllPressedKeysUntilRelease = false;
+
+				Subsys->RequestRebuildControlMappings(Options);
+
+				UE_LOG(LogTemp, Warning, TEXT("[PC] IMC added + Rebuild mappings"));
 			}
 		}
 	}
@@ -55,6 +72,22 @@ void AIndianPokerPlayerController::BeginPlay()
 
 	UE_LOG(LogTemp, Warning, TEXT("[PC] IMC=%s Look=%s Aim=%s Test=%s"),
 		*GetNameSafe(IMC_Player), *GetNameSafe(IA_Look), *GetNameSafe(IA_AimLook), *GetNameSafe(IA_Test));
+
+	// 세션테스트 맵에서 입력이 무조건 되게 (세션 테스트용)
+	const FString CleanMapName = UGameplayStatics::GetCurrentLevelName(this, /*bRemovePrefix*/ true);
+
+	if (CleanMapName == TEXT("SessionTestMap"))
+	{
+		FInputModeGameOnly Mode;
+		SetInputMode(Mode);
+		bShowMouseCursor = false;
+
+		// 멀티 프로세스/포커스 꼬임 대비
+		SetIgnoreMoveInput(false);
+		SetIgnoreLookInput(false);
+
+		UE_LOG(LogTemp, Warning, TEXT("[PC] SessionTestMap detected -> Force GameOnly input"));
+	}
 }
 
 //void AIndianPokerPlayerController::SetupInputComponent()
@@ -113,6 +146,23 @@ void AIndianPokerPlayerController::SetupInputComponent()
 	{
 		EIC->BindAction(IA_Test, ETriggerEvent::Started, this, &AIndianPokerPlayerController::OnTestPressed);
 	}
+
+	// Day6 세션 테스트용 바인딩
+	/*InputComponent->BindKey(EKeys::Q, IE_Pressed, this, &ThisClass::TestHost);
+	InputComponent->BindKey(EKeys::W, IE_Pressed, this, &ThisClass::TestFind);
+	InputComponent->BindKey(EKeys::E, IE_Pressed, this, &ThisClass::TestJoin);
+	InputComponent->BindKey(EKeys::R, IE_Pressed, this, &ThisClass::TestDestroy);*/
+	if (IA_SessionHost)
+		EIC->BindAction(IA_SessionHost, ETriggerEvent::Started, this, &AIndianPokerPlayerController::TestHost);
+
+	if (IA_SessionFind)
+		EIC->BindAction(IA_SessionFind, ETriggerEvent::Started, this, &AIndianPokerPlayerController::TestFind);
+
+	if (IA_SessionJoin)
+		EIC->BindAction(IA_SessionJoin, ETriggerEvent::Started, this, &AIndianPokerPlayerController::TestJoin);
+
+	if (IA_SessionDestroy)
+		EIC->BindAction(IA_SessionDestroy, ETriggerEvent::Started, this, &AIndianPokerPlayerController::TestDestroy);
 }
 
 // RMB 누를 때만 Look 구현. 
@@ -183,5 +233,55 @@ void AIndianPokerPlayerController::OnTestPressed()
 	else
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[PC] (CLIENT) blocked"));
+	}
+}
+
+// Subsystem 가져오는 helper 함수 (Day6 테스트용)
+static UIndianPokerSessionSubsystem* GetSessionSubsystem(UObject* WorldContext)
+{
+	if (!WorldContext) return nullptr;
+
+	if (UWorld* World = WorldContext->GetWorld())
+	{
+		if (UGameInstance* GI = World->GetGameInstance())
+		{
+			return GI->GetSubsystem<UIndianPokerSessionSubsystem>();
+		}
+	}
+
+	return nullptr;
+}
+
+void AIndianPokerPlayerController::TestHost()
+{
+	if (auto* SessionSub = GetSessionSubsystem(this))
+	{
+		SessionSub->HostSession();
+	}
+}
+
+void AIndianPokerPlayerController::TestFind()
+{
+	UE_LOG(LogTemp, Warning, TEXT("[PC][Client?=%d] W Pressed"), IsLocalController() ? 1 : 0);
+
+	if (auto* SessionSub = GetSessionSubsystem(this))
+	{
+		SessionSub->FindSessions();
+	}
+}
+
+void AIndianPokerPlayerController::TestJoin()
+{
+	if (auto* SessionSub = GetSessionSubsystem(this))
+	{
+		SessionSub->JoinFirstSession();
+	}
+}
+
+void AIndianPokerPlayerController::TestDestroy()
+{
+	if (auto* SessionSub = GetSessionSubsystem(this))
+	{
+		SessionSub->DestroySession();
 	}
 }

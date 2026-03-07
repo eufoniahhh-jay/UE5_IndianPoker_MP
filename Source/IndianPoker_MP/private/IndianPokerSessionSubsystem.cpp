@@ -114,7 +114,7 @@ void UIndianPokerSessionSubsystem::HostSession()
 
 	FOnlineSessionSettings Settings;
 	Settings.bIsLANMatch = bIsLAN;
-	Settings.NumPublicConnections = MaxPlayers;
+	Settings.NumPublicConnections = HostMaxPlayers;
 	Settings.bAllowJoinInProgress = true;
 	Settings.bShouldAdvertise = true;
 	Settings.bUsesPresence = false;
@@ -123,7 +123,7 @@ void UIndianPokerSessionSubsystem::HostSession()
 	CreateSessionCompleteHandle = SI->AddOnCreateSessionCompleteDelegate_Handle(CreateSessionCompleteDelegate);
 
 	UE_LOG(LogTemp, Warning, TEXT("[SessionSub][%s] HostSession -> CreateSession request (LAN=%d Max=%d)"),
-		*NetModeToStr(GetWorld()), bIsLAN ? 1 : 0, MaxPlayers);
+		*NetModeToStr(GetWorld()), bIsLAN ? 1 : 0, HostMaxPlayers);
 
 	const bool bRequestSent = SI->CreateSession(0, IndianPokerSessionName, Settings);
 	if (!bRequestSent)
@@ -151,6 +151,7 @@ void UIndianPokerSessionSubsystem::FindSessions()
 	IOnlineSessionPtr SI = GetSessionInterface();
 	if (!SI.IsValid()) return;
 
+	// Day7 - 새 검색 시작 전에 이전 결과를 비우는 로직(3줄)
 	SessionSearch = MakeShared<FOnlineSessionSearch>();
 	SessionSearch->bIsLanQuery = bIsLAN;
 	SessionSearch->MaxSearchResults = 20;
@@ -165,13 +166,16 @@ void UIndianPokerSessionSubsystem::FindSessions()
 	{
 		UE_LOG(LogTemp, Error, TEXT("[SessionSub][%s] FindSessions request FAILED to send"), *NetModeToStr(GetWorld()));
 		SI->ClearOnFindSessionsCompleteDelegate_Handle(FindSessionsCompleteHandle);
+
+		bIsFindingSessions = false;
 	}
 }
 
 // (Find 콜백)
 void UIndianPokerSessionSubsystem::OnFindSessionsComplete(bool bWasSuccessful)
 {
-	if (IOnlineSessionPtr SI = GetSessionInterface())
+	// Day6
+	/*if (IOnlineSessionPtr SI = GetSessionInterface())
 	{
 		SI->ClearOnFindSessionsCompleteDelegate_Handle(FindSessionsCompleteHandle);
 	}
@@ -179,7 +183,69 @@ void UIndianPokerSessionSubsystem::OnFindSessionsComplete(bool bWasSuccessful)
 	const int32 Count = (SessionSearch.IsValid()) ? SessionSearch->SearchResults.Num() : 0;
 
 	UE_LOG(LogTemp, Warning, TEXT("[SessionSub][%s] OnFindSessionsComplete: Success=%d Results=%d"),
+		*NetModeToStr(GetWorld()), bWasSuccessful ? 1 : 0, Count);*/
+
+	// Day7
+	// FindSessions 완료 콜백 구조 변경
+	// Find 완료 -> 결과를 CachedSearchResults에 저장 -> FSessionRowData로 변환 -> OnSessionsFound.Broadcast()
+	bIsFindingSessions = false;
+
+	if (IOnlineSessionPtr SI = GetSessionInterface())
+	{
+		SI->ClearOnFindSessionsCompleteDelegate_Handle(FindSessionsCompleteHandle);
+	}
+
+	CachedSearchResults.Empty();
+	CachedRowData.Empty();
+
+	const int32 Count = (SessionSearch.IsValid()) ? SessionSearch->SearchResults.Num() : 0;
+
+	UE_LOG(LogTemp, Warning, TEXT("[SessionSub][%s] OnFindSessionsComplete: Success=%d Results=%d"),
 		*NetModeToStr(GetWorld()), bWasSuccessful ? 1 : 0, Count);
+
+	if (bWasSuccessful && SessionSearch.IsValid())
+	{
+		const TArray<FOnlineSessionSearchResult>& Results = SessionSearch->SearchResults;
+
+		for (int32 i = 0; i < Results.Num(); ++i)
+		{
+			const FOnlineSessionSearchResult& SearchResult = Results[i];
+			CachedSearchResults.Add(SearchResult);
+
+			FSessionRowData RowData;
+
+			// HostName
+			FString HostName = SearchResult.Session.OwningUserName;
+			if (HostName.IsEmpty())
+			{
+				HostName = TEXT("UnknownHost");
+			}
+
+			// Players
+			const int32 MaxPlayers = SearchResult.Session.SessionSettings.NumPublicConnections;
+			const int32 OpenConnections = SearchResult.Session.NumOpenPublicConnections;
+			const int32 CurrentPlayers = FMath::Max(0, MaxPlayers - OpenConnections);
+
+			// RowData 채우기
+			RowData.HostName = HostName;
+			RowData.CurrentPlayers = CurrentPlayers;
+			RowData.MaxPlayers = MaxPlayers;
+			RowData.Ping = SearchResult.PingInMs;
+			RowData.SearchResultIndex = i;
+
+			CachedRowData.Add(RowData);
+
+			UE_LOG(LogTemp, Warning, TEXT("[SessionSub][%s] Result[%d] Host=%s Players=%d/%d Ping=%d"),
+				*NetModeToStr(GetWorld()),
+				i,
+				*RowData.HostName,
+				RowData.CurrentPlayers,
+				RowData.MaxPlayers,
+				RowData.Ping);
+		}
+	}
+
+	OnSessionsFound.Broadcast(bWasSuccessful, CachedRowData);
 }
 
 // JoinSession() (Day6는 JoinFirstSession) + Join 콜백
@@ -275,3 +341,36 @@ void UIndianPokerSessionSubsystem::OnDestroySessionComplete(FName SessionName, b
 		*NetModeToStr(GetWorld()), *SessionName.ToString(), bWasSuccessful ? 1 : 0);
 }
 
+void UIndianPokerSessionSubsystem::JoinSessionByIndex(int32 Index)
+{
+	IOnlineSessionPtr SI = GetSessionInterface();
+	if (!SI.IsValid())
+	{
+		UE_LOG(LogTemp, Error, TEXT("[SessionSub][%s] JoinSessionByIndex failed - SessionInterface invalid"),
+			*NetModeToStr(GetWorld()));
+		return;
+	}
+
+	if (!CachedSearchResults.IsValidIndex(Index))
+	{
+		UE_LOG(LogTemp, Error, TEXT("[SessionSub][%s] JoinSessionByIndex failed - invalid index %d"),
+			*NetModeToStr(GetWorld()), Index);
+		return;
+	}
+
+	JoinSessionCompleteHandle =
+		SI->AddOnJoinSessionCompleteDelegate_Handle(JoinSessionCompleteDelegate);
+
+	UE_LOG(LogTemp, Warning, TEXT("[SessionSub][%s] JoinSessionByIndex -> request (Index=%d)"),
+		*NetModeToStr(GetWorld()), Index);
+
+	const bool bRequestSent = SI->JoinSession(0, NAME_GameSession, CachedSearchResults[Index]);
+
+	if (!bRequestSent)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[SessionSub][%s] JoinSessionByIndex request FAILED to send (Index=%d)"),
+			*NetModeToStr(GetWorld()), Index);
+
+		SI->ClearOnJoinSessionCompleteDelegate_Handle(JoinSessionCompleteHandle);
+	}
+}

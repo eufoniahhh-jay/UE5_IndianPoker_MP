@@ -5,6 +5,7 @@
 #include "OnlineSubsystem.h"
 #include "OnlineSubsystemUtils.h"
 #include "Engine/Engine.h"
+#include "Kismet/GameplayStatics.h"
 
 const FName UIndianPokerSessionSubsystem::IndianPokerSessionName(TEXT("IndianPokerSession"));
 
@@ -117,15 +118,18 @@ void UIndianPokerSessionSubsystem::HostSession()
 	Settings.NumPublicConnections = HostMaxPlayers;
 	Settings.bAllowJoinInProgress = true;
 	Settings.bShouldAdvertise = true;
+
 	Settings.bUsesPresence = false;
 	Settings.bUseLobbiesIfAvailable = false;
+	Settings.bAllowJoinViaPresence = false;
 
 	CreateSessionCompleteHandle = SI->AddOnCreateSessionCompleteDelegate_Handle(CreateSessionCompleteDelegate);
 
 	UE_LOG(LogTemp, Warning, TEXT("[SessionSub][%s] HostSession -> CreateSession request (LAN=%d Max=%d)"),
 		*NetModeToStr(GetWorld()), bIsLAN ? 1 : 0, HostMaxPlayers);
 
-	const bool bRequestSent = SI->CreateSession(0, IndianPokerSessionName, Settings);
+	//const bool bRequestSent = SI->CreateSession(0, IndianPokerSessionName, Settings);
+	const bool bRequestSent = SI->CreateSession(0, NAME_GameSession, Settings);
 	if (!bRequestSent)
 	{
 		UE_LOG(LogTemp, Error, TEXT("[SessionSub][%s] CreateSession request FAILED to send"), *NetModeToStr(GetWorld()));
@@ -143,6 +147,31 @@ void UIndianPokerSessionSubsystem::OnCreateSessionComplete(FName SessionName, bo
 
 	UE_LOG(LogTemp, Warning, TEXT("[SessionSub][%s] OnCreateSessionComplete: %s Success=%d"),
 		*NetModeToStr(GetWorld()), *SessionName.ToString(), bWasSuccessful ? 1 : 0);
+
+	if (!bWasSuccessful)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[SessionSub] CreateSession failed. Skip ServerTravel."));
+		return;
+	}
+
+	/*UWorld* World = GetWorld();
+	if (World == nullptr)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[SessionSub] GetWorld() is nullptr. Cannot ServerTravel."));
+		return;
+	}*/
+
+	// Day8. ServerTravel 은 말 그대로 이미 서버인 월드가 다른 맵으로 이동할 때 쓰는 느낌이 강한데,
+	// 지금 Host 버튼 누르기 전의 MainMenuMap 월드는 로그상 Standalone 이니까
+	// 아직 서버가 아닌 독립 월드이므로, 여기서 '리스닝 서버'로 맵을 열어야 함
+	/*const FString TravelURL = TEXT("/Game/Maps/LobbyMap?listen");
+	UE_LOG(LogTemp, Warning, TEXT("[SessionSub] ServerTravel -> %s"), *TravelURL);
+	World->ServerTravel(TravelURL);*/
+
+	/*UE_LOG(LogTemp, Warning, TEXT("[SessionSub] OpenLevel -> LobbyMap?listen"));
+	UGameplayStatics::OpenLevel(World, FName(TEXT("LobbyMap")), true, TEXT("listen"));*/
+
+	UE_LOG(LogTemp, Warning, TEXT("[SessionSub] CreateSession succeeded."));
 }
 
 // FindSessions() + Find 콜백
@@ -264,7 +293,8 @@ void UIndianPokerSessionSubsystem::JoinFirstSession()
 
 	UE_LOG(LogTemp, Warning, TEXT("[SessionSub][%s] JoinSession -> request using Result[0]"), *NetModeToStr(GetWorld()));
 
-	const bool bRequestSent = SI->JoinSession(0, IndianPokerSessionName, SessionSearch->SearchResults[0]);
+	//const bool bRequestSent = SI->JoinSession(0, IndianPokerSessionName, SessionSearch->SearchResults[0]);
+	const bool bRequestSent = SI->JoinSession(0, NAME_GameSession, SessionSearch->SearchResults[0]);
 	if (!bRequestSent)
 	{
 		UE_LOG(LogTemp, Error, TEXT("[SessionSub][%s] JoinSession request FAILED to send"), *NetModeToStr(GetWorld()));
@@ -299,16 +329,86 @@ void UIndianPokerSessionSubsystem::OnJoinSessionComplete(FName SessionName, EOnJ
 	UE_LOG(LogTemp, Warning, TEXT("[SessionSub][%s] OnJoinSessionComplete: %s Result=%s"),
 		*NetModeToStr(GetWorld()), *SessionName.ToString(), JoinResultToStr(Result));
 
+	if (Result != EOnJoinSessionCompleteResult::Success)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[SessionSub] JoinSession failed. Skip ClientTravel."));
+		return;
+	}
+
+	if (!SI.IsValid())
+	{
+		UE_LOG(LogTemp, Error, TEXT("[SessionSub] SessionInterface is invalid."));
+		return;
+	}
+
+	FString ConnectString;
+	const bool bOK = SI->GetResolvedConnectString(SessionName, ConnectString);
+
 	if (Result == EOnJoinSessionCompleteResult::Success && SI.IsValid())
 	{
-		FString ConnectString;
-		const bool bOK = SI->GetResolvedConnectString(SessionName, ConnectString);
-
 		UE_LOG(LogTemp, Warning, TEXT("[SessionSub][%s] GetResolvedConnectString: %s %s"),
 			*NetModeToStr(GetWorld()),
 			bOK ? TEXT("OK") : TEXT("FAIL"),
 			bOK ? *ConnectString : TEXT(""));
 	}
+
+	if (!bOK)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[SessionSub] Failed to resolve connect string."));
+		return;
+	}
+
+	
+	// Day8. 계속 포트를 0으로 잡아서... 여기는 잠시 보류하고,
+	// TODO: OSS Null + PIE 환경에서 GetResolvedConnectString()가 :0을 반환하는 문제 임시 우회(하단 추가 코드)
+	/*UWorld* World = GetWorld();
+	if (World == nullptr)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[SessionSub] GetWorld() is nullptr."));
+		return;
+	}
+
+	APlayerController* PC = World->GetFirstPlayerController();
+	if (PC == nullptr)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[SessionSub] FirstPlayerController is nullptr."));
+		return;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[SessionSub][%s] ClientTravel -> %s"),
+		*NetModeToStr(World), *ConnectString);
+
+	PC->ClientTravel(ConnectString, TRAVEL_Absolute);*/
+
+	// Day8. 임시 우회: OSS Null에서 :0 이 반환되면 7777로 보정
+	FString TravelAddress = ConnectString;
+
+	if (TravelAddress.EndsWith(TEXT(":0")))
+	{
+		TravelAddress = TravelAddress.LeftChop(2) + TEXT(":7777");
+
+		UE_LOG(LogTemp, Warning, TEXT("[SessionSub] ConnectString port was 0. Fallback -> %s"),
+			*TravelAddress);
+	}
+
+	UWorld* World = GetWorld();
+	if (World == nullptr)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[SessionSub] GetWorld() is nullptr."));
+		return;
+	}
+
+	APlayerController* PC = World->GetFirstPlayerController();
+	if (PC == nullptr)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[SessionSub] FirstPlayerController is nullptr."));
+		return;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[SessionSub][%s] ClientTravel -> %s"),
+		*NetModeToStr(World), *TravelAddress);
+
+	PC->ClientTravel(TravelAddress, TRAVEL_Absolute);
 }
 
 // DestroySession() + Destroy 콜백
@@ -321,7 +421,8 @@ void UIndianPokerSessionSubsystem::DestroySession()
 
 	UE_LOG(LogTemp, Warning, TEXT("[SessionSub][%s] DestroySession -> request"), *NetModeToStr(GetWorld()));
 
-	const bool bRequestSent = SI->DestroySession(IndianPokerSessionName);
+	//const bool bRequestSent = SI->DestroySession(IndianPokerSessionName);
+	const bool bRequestSent = SI->DestroySession(NAME_GameSession);
 	if (!bRequestSent)
 	{
 		UE_LOG(LogTemp, Error, TEXT("[SessionSub][%s] DestroySession request FAILED to send"), *NetModeToStr(GetWorld()));
@@ -339,6 +440,19 @@ void UIndianPokerSessionSubsystem::OnDestroySessionComplete(FName SessionName, b
 
 	UE_LOG(LogTemp, Warning, TEXT("[SessionSub][%s] OnDestroySessionComplete: %s Success=%d"),
 		*NetModeToStr(GetWorld()), *SessionName.ToString(), bWasSuccessful ? 1 : 0);
+
+	// Day8. Destroy 완료 후 로비맵 열기
+	if (bPendingHostAfterDestroy)
+	{
+		bPendingHostAfterDestroy = false;
+
+		UWorld* World = GetWorld();
+		if (World)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[SessionSub] OpenLevel -> LobbyMap?listen"));
+			UGameplayStatics::OpenLevel(World, FName(TEXT("LobbyMap")), true, TEXT("listen"));
+		}
+	}
 }
 
 void UIndianPokerSessionSubsystem::JoinSessionByIndex(int32 Index)
@@ -372,5 +486,82 @@ void UIndianPokerSessionSubsystem::JoinSessionByIndex(int32 Index)
 			*NetModeToStr(GetWorld()), Index);
 
 		SI->ClearOnJoinSessionCompleteDelegate_Handle(JoinSessionCompleteHandle);
+	}
+}
+
+void UIndianPokerSessionSubsystem::TryCreateSessionAfterLobbyOpened()
+{
+	if (UWorld* World = GetWorld())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[SessionSub] World URL = %s"), *World->URL.ToString());
+		UE_LOG(LogTemp, Warning, TEXT("[SessionSub] World URL Port = %d"), World->URL.Port);
+	}
+
+	if (!bPendingCreateSessionInLobby)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[SessionSub] TryCreateSessionAfterLobbyOpened skipped - no pending request"));
+		return;
+	}
+
+	bPendingCreateSessionInLobby = false;
+
+	UE_LOG(LogTemp, Warning, TEXT("[SessionSub][%s] TryCreateSessionAfterLobbyOpened -> HostSession"),
+		*NetModeToStr(GetWorld()));
+
+	HostSession();
+}
+
+void UIndianPokerSessionSubsystem::RequestHostLobby()
+{
+	/*bPendingHostAfterDestroy = true;
+	bPendingCreateSessionInLobby = true;
+	PendingMaxPlayers = 2;
+	bPendingLAN = true;
+
+	UE_LOG(LogTemp, Warning, TEXT("[SessionSub][%s] RequestHostLobby -> DestroySession first"),
+		*NetModeToStr(GetWorld()));
+
+	DestroySession();*/
+
+	bPendingCreateSessionInLobby = true;
+	PendingMaxPlayers = 2;
+	bPendingLAN = true;
+
+	UWorld* World = GetWorld();
+	IOnlineSessionPtr SI = GetSessionInterface();
+
+	if (!SI.IsValid())
+	{
+		UE_LOG(LogTemp, Error, TEXT("[SessionSub][%s] RequestHostLobby -> SessionInterface invalid"),
+			*NetModeToStr(World));
+		return;
+	}
+
+	// 기존 세션 존재 여부 확인
+	if (SI->GetNamedSession(NAME_GameSession) != nullptr)
+	{
+		bPendingHostAfterDestroy = true;
+
+		UE_LOG(LogTemp, Warning, TEXT("[SessionSub][%s] RequestHostLobby -> Existing session found, DestroySession first"),
+			*NetModeToStr(World));
+
+		DestroySession();
+	}
+	else
+	{
+		bPendingHostAfterDestroy = false;
+
+		UE_LOG(LogTemp, Warning, TEXT("[SessionSub][%s] RequestHostLobby -> No existing session, OpenLevel directly"),
+			*NetModeToStr(World));
+
+		if (World)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[SessionSub] OpenLevel -> LobbyMap?listen"));
+			UGameplayStatics::OpenLevel(World, FName(TEXT("LobbyMap")), true, TEXT("listen"));
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("[SessionSub] RequestHostLobby -> GetWorld() is nullptr"));
+		}
 	}
 }

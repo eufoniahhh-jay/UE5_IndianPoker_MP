@@ -51,6 +51,7 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void FindSessions();
 	void JoinFirstSession();     // Day6는 Result[0]만 조인하는 간단 버전
+	UFUNCTION(BlueprintCallable)
 	void DestroySession();
 
 private:
@@ -116,4 +117,18 @@ public:
 
 	UFUNCTION(BlueprintPure)
 	bool IsFindingSessions() const { return bIsFindingSessions; }
+
+// Day8. wbp에서 host 버튼을 누르면,
+// RequestHostLobby(wbp에서 호출) -> destroy -> openlevel -> host 순으로 가게끔
+private:
+	bool bPendingHostAfterDestroy = false;
+	bool bPendingCreateSessionInLobby = false;
+	int32 PendingMaxPlayers = 2;
+	bool bPendingLAN = true;
+
+public:
+	void TryCreateSessionAfterLobbyOpened();
+	// Day8 핵심 함수. WBP_MainMenuAdvanced에서 host 버튼을 누르면 이거랑 연결할거임
+	UFUNCTION(BlueprintCallable)
+	void RequestHostLobby();
 };

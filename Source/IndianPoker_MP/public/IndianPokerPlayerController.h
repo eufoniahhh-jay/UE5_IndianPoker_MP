@@ -74,4 +74,9 @@ private:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Input|Session")
 	UInputAction* IA_SessionDestroy;
+
+public:
+	// Day8. BeginPlay -> HostSession()을 다음 틱으로 미뤄서 
+	// 세션 생성 성공 시점에 서버의 실제 listen 포트가 아직 세션 정보에 제대로 반영되지 않을 수 있는 문제 해결 위함
+	void HandleLobbyHostSetup();
 };

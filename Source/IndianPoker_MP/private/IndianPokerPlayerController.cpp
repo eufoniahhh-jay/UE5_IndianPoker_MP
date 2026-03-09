@@ -88,6 +88,47 @@ void AIndianPokerPlayerController::BeginPlay()
 
 		UE_LOG(LogTemp, Warning, TEXT("[PC] SessionTestMap detected -> Force GameOnly input"));
 	}
+
+	// Day8. LobbyMap 진입 후 Host 후속 처리
+	if (bLocal && CleanMapName == TEXT("LobbyMap"))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[PC] LobbyMap detected"));
+
+		// 클라이언트는 여기서 세션 생성 시도를 하지 않음
+		if (NetMode != NM_Client)
+		{
+			// 다음 틱으로 넘기기
+			/*FTimerHandle TimerHandle;
+			GetWorldTimerManager().SetTimerForNextTick(this, &AIndianPokerPlayerController::HandleLobbyHostSetup);*/
+
+			FTimerHandle LobbyHostSetupTimerHandle;
+			GetWorldTimerManager().SetTimer(
+				LobbyHostSetupTimerHandle,
+				this,
+				&AIndianPokerPlayerController::HandleLobbyHostSetup,
+				1.5f,   // 일단 0.5초 딜레이
+				false
+			);
+
+			// HandleLobbyHostSetup 쪽으로 이동
+			/*if (UGameInstance* GI = GetGameInstance())
+			{
+				if (UIndianPokerSessionSubsystem* SessionSub = GI->GetSubsystem<UIndianPokerSessionSubsystem>())
+				{
+					UE_LOG(LogTemp, Warning, TEXT("[PC] Calling TryCreateSessionAfterLobbyOpened()"));
+					SessionSub->TryCreateSessionAfterLobbyOpened();
+				}
+				else
+				{
+					UE_LOG(LogTemp, Error, TEXT("[PC] SessionSubsystem is nullptr"));
+				}
+			}*/
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[PC] LobbyMap on Client -> Skip TryCreateSessionAfterLobbyOpened"));
+		}
+	}
 }
 
 //void AIndianPokerPlayerController::SetupInputComponent()
@@ -275,6 +316,7 @@ void AIndianPokerPlayerController::TestJoin()
 	if (auto* SessionSub = GetSessionSubsystem(this))
 	{
 		SessionSub->JoinFirstSession();
+		//SessionSub->JoinSessionByIndex(0);
 	}
 }
 
@@ -283,5 +325,17 @@ void AIndianPokerPlayerController::TestDestroy()
 	if (auto* SessionSub = GetSessionSubsystem(this))
 	{
 		SessionSub->DestroySession();
+	}
+}
+
+void AIndianPokerPlayerController::HandleLobbyHostSetup()
+{
+	if (UGameInstance* GI = GetGameInstance())
+	{
+		if (UIndianPokerSessionSubsystem* SessionSub = GI->GetSubsystem<UIndianPokerSessionSubsystem>())
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[PC] Delayed call -> TryCreateSessionAfterLobbyOpened()"));
+			SessionSub->TryCreateSessionAfterLobbyOpened();
+		}
 	}
 }

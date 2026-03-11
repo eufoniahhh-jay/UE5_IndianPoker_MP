@@ -32,8 +32,26 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Phase")
 	EGamePhase GetCurrentPhase() const { return CurrentPhase; }
 
+	// Day9 추가 함수들
+	UFUNCTION(BlueprintCallable, Category = "Round")
+	int32 GetPot() const { return Pot; }
+
+	UFUNCTION(BlueprintCallable, Category = "Round")
+	int32 GetRoundBet() const { return RoundBet; }
+
+	UFUNCTION(BlueprintCallable, Category = "Round")
+	int32 GetCurrentActorPlayerId() const { return CurrentActorPlayerId; }
+
+	UFUNCTION(BlueprintCallable, Category = "Round")
+	int32 GetFirstActorPlayerId() const { return FirstActorPlayerId; }
+
 	// 서버에서만 호출되도록 (실제 호출은 GameMode에서 할 것)
 	void SetPhaseServer(EGamePhase NewPhase);
+	// Day9
+	void SetPotServer(int32 NewPot);
+	void SetRoundBetServer(int32 NewRoundBet);
+	void SetCurrentActorPlayerIdServer(int32 NewPlayerId);
+	void SetFirstActorPlayerIdServer(int32 NewPlayerId);
 
 protected:
 	virtual void BeginPlay() override;
@@ -48,6 +66,32 @@ protected:
 	UPROPERTY(ReplicatedUsing = OnRep_CurrentPhase, BlueprintReadOnly, Category = "Phase")
 	EGamePhase CurrentPhase = EGamePhase::Lobby;
 
+	// Day9
+	UPROPERTY(ReplicatedUsing = OnRep_Pot, BlueprintReadOnly, Category = "Round")
+	int32 Pot = 0;
+
+	UPROPERTY(ReplicatedUsing = OnRep_RoundBet, BlueprintReadOnly, Category = "Round")
+	int32 RoundBet = 0;
+
+	// Day9. 어느 플레이어 차례인지 공용 표시용
+	UPROPERTY(ReplicatedUsing = OnRep_CurrentActorPlayerId, BlueprintReadOnly, Category = "Round")
+	int32 CurrentActorPlayerId = -1;
+
+	UPROPERTY(ReplicatedUsing = OnRep_FirstActorPlayerId, BlueprintReadOnly, Category = "Round")
+	int32 FirstActorPlayerId = -1;
+
 	UFUNCTION()
 	void OnRep_CurrentPhase();
+	// Day9
+	UFUNCTION()
+	void OnRep_Pot();
+
+	UFUNCTION()
+	void OnRep_RoundBet();
+
+	UFUNCTION()
+	void OnRep_CurrentActorPlayerId();
+
+	UFUNCTION()
+	void OnRep_FirstActorPlayerId();
 };

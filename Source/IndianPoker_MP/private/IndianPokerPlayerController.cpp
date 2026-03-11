@@ -339,3 +339,12 @@ void AIndianPokerPlayerController::HandleLobbyHostSetup()
 		}
 	}
 }
+
+void AIndianPokerPlayerController::ClientReceiveVisibleOpponentCard_Implementation(int32 InCardValue)
+{
+	ClientVisibleOpponentCardValue = InCardValue;
+
+	UE_LOG(LogTemp, Warning, TEXT("[Client] Visible Opponent Card = %d | PC=%s"),
+		ClientVisibleOpponentCardValue,
+		*GetName());
+}

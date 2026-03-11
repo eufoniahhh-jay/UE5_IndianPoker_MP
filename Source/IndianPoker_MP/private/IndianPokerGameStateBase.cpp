@@ -50,15 +50,86 @@ void AIndianPokerGameStateBase::SetPhaseServer(EGamePhase NewPhase)
 	// OnRep_CurrentPhase();
 }
 
+// Day9
+void AIndianPokerGameStateBase::SetPotServer(int32 NewPot)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	Pot = NewPot;
+	UE_LOG(LogTemp, Warning, TEXT("[GameState][Server] Pot set to %d"), Pot);
+}
+
+void AIndianPokerGameStateBase::SetRoundBetServer(int32 NewRoundBet)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	RoundBet = NewRoundBet;
+	UE_LOG(LogTemp, Warning, TEXT("[GameState][Server] RoundBet set to %d"), RoundBet);
+}
+
+void AIndianPokerGameStateBase::SetCurrentActorPlayerIdServer(int32 NewPlayerId)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	CurrentActorPlayerId = NewPlayerId;
+	UE_LOG(LogTemp, Warning, TEXT("[GameState][Server] CurrentActorPlayerId set to %d"), CurrentActorPlayerId);
+}
+
+void AIndianPokerGameStateBase::SetFirstActorPlayerIdServer(int32 NewPlayerId)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	FirstActorPlayerId = NewPlayerId;
+	UE_LOG(LogTemp, Warning, TEXT("[GameState][Server] FirstActorPlayerId set to %d"), FirstActorPlayerId);
+}
+
 void AIndianPokerGameStateBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
+	// 복제할 변수 등록
 	DOREPLIFETIME(AIndianPokerGameStateBase, CurrentPhase);
+	// Day9
+	DOREPLIFETIME(AIndianPokerGameStateBase, Pot);
+	DOREPLIFETIME(AIndianPokerGameStateBase, RoundBet);
+	DOREPLIFETIME(AIndianPokerGameStateBase, CurrentActorPlayerId);
+	DOREPLIFETIME(AIndianPokerGameStateBase, FirstActorPlayerId);
 }
 
 void AIndianPokerGameStateBase::OnRep_CurrentPhase()
 {
 	// 클라에서 동기화 되었는지 확인하는 핵심 로그(딱 1줄만 남기기)
-	UE_LOG(LogTemp, Warning, TEXT("[GS][OnRep][CLIENT] Phase replicated: %d"), (int32)CurrentPhase);
+	UE_LOG(LogTemp, Warning, TEXT("[GS][OnRep][CLIENT] (OnRep_CurrentPhase) Phase replicated: %d"), (int32)CurrentPhase);
+}
+
+void AIndianPokerGameStateBase::OnRep_Pot()
+{
+	UE_LOG(LogTemp, Warning, TEXT("[GameState][Client] OnRep_Pot -> %d"), Pot);
+}
+
+void AIndianPokerGameStateBase::OnRep_RoundBet()
+{
+	UE_LOG(LogTemp, Warning, TEXT("[GameState][Client] OnRep_RoundBet -> %d"), RoundBet);
+}
+
+void AIndianPokerGameStateBase::OnRep_CurrentActorPlayerId()
+{
+	UE_LOG(LogTemp, Warning, TEXT("[GameState][Client] OnRep_CurrentActorPlayerId -> %d"), CurrentActorPlayerId);
+}
+
+void AIndianPokerGameStateBase::OnRep_FirstActorPlayerId()
+{
+	UE_LOG(LogTemp, Warning, TEXT("[GameState][Client] OnRep_FirstActorPlayerId -> %d"), FirstActorPlayerId);
 }

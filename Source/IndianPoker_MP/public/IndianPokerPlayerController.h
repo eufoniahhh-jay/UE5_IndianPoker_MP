@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
 #include "InputActionValue.h"
+#include "BettingTypes.h"
 #include "IndianPokerPlayerController.generated.h"
 
 /**
@@ -87,4 +88,22 @@ public:
 
 	UFUNCTION(Client, Reliable)
 	void ClientReceiveVisibleOpponentCard(int32 InCardValue);
+
+public:
+	//Day10. 클라이언트 입력으로 액션 요청
+	UFUNCTION(Server, Reliable)
+	void Server_RequestAction(EBettingActionType ActionType, int32 RaiseExtra);
+
+	void RequestCheck();
+	void RequestCheckCall();
+	void RequestFold();
+
+	UPROPERTY(EditDefaultsOnly, Category = "Input|Betting")
+	UInputAction* IA_Check;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Input|Betting")
+	UInputAction* IA_CheckCall;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Input|Betting")
+	UInputAction* IA_Fold;
 };

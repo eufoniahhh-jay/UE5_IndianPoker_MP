@@ -5,10 +5,12 @@
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
 #include "IndianPokerGameStateBase.h"
+#include "BettingTypes.h"
 #include "IndianPokerGameModeBase.generated.h"
 
 class AIndianPokerGameStateBase;
 class AIndianPokerPlayerState;
+class AIndianPokerPlayerController;
 
 // GamePhase enum을 GameState 헤더에 정의할 예정이므로,
 // 여기서는 GameState 헤더 include를 cpp에서 하고 forward 선언만 둠.
@@ -95,4 +97,42 @@ protected:
 
 	UPROPERTY()
 	AIndianPokerPlayerState* CurrentActorPS = nullptr;
+
+public:
+	// Day10. 
+	bool bRoundEnded = false;
+	bool bHasOpeningCheck = false;
+	// 베팅 액션의 메인 진입점
+	void HandlePlayerAction(AIndianPokerPlayerController* RequestingPC, EBettingActionType ActionType, int32 RaiseExtra);
+
+	// 공통 검증 함수 (룰 파단)
+	bool ValidateActionRequest(
+		AIndianPokerPlayerController* RequestingPC,
+		AIndianPokerPlayerState*& OutRequestingPS,
+		AIndianPokerPlayerState*& OutOpponentPS
+	);
+
+	// Check 액션 함수
+	bool HandleAction_Check(
+		AIndianPokerPlayerState* RequestingPS,
+		AIndianPokerPlayerState* OpponentPS
+	);
+
+	// CheckCall 액션 함수
+	bool HandleAction_CheckCall(
+		AIndianPokerPlayerState* RequestingPS,
+		AIndianPokerPlayerState* OpponentPS
+	);
+
+	// Fold 액션 함수
+	bool HandleAction_Fold(
+		AIndianPokerPlayerState* RequestingPS,
+		AIndianPokerPlayerState* OpponentPS
+	);
+
+	// Fold 후 정산 함수
+	void ResolveFoldRound(
+		AIndianPokerPlayerState* FolderPS,
+		AIndianPokerPlayerState* WinnerPS
+	);
 };

@@ -31,4 +31,8 @@ public:
 
 	UPROPERTY(BlueprintReadOnly, Category = "Round")
 	int32 VisibleOpponentCardValue = -1;
+
+public:
+	// Day10. 
+	bool bFolded = false;
 };

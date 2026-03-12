@@ -3,10 +3,11 @@
 
 #include "IndianPokerGameModeBase.h"
 #include "IndianPoker_MP.h"
-#include "IndianPokerPlayerState.h"
 #include "IndianPokerGameStateBase.h"
+#include "IndianPokerPlayerState.h"
 #include "IndianPokerPlayerController.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/PlayerState.h"
 #include "Engine/World.h"
 #include "Algo/RandomShuffle.h"
 
@@ -223,12 +224,24 @@ void AIndianPokerGameModeBase::StartRound()
 	/*Pot = 2;
 	RoundBet = 1;*/
 	RequiredToCall = 0;
+	bRoundEnded = false;
 
-	SetPhaseServer(EGamePhase::Deal);
+	//SetPhaseServer(EGamePhase::Deal);
 
 	// 임시값
 	FirstActorPS = nullptr;
 	CurrentActorPS = nullptr;
+
+	AIndianPokerPlayerState* P1 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[0]);
+	AIndianPokerPlayerState* P2 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[1]);
+
+	// 플레이어별 라운드 상태 초기화
+	P1->bFolded = false;
+	P2->bFolded = false;
+
+	UE_LOG(LogTemp, Warning, TEXT("[Round] Reset Round State - bRoundEnded=false, P1/P2 Folded=false"));
+
+	SetPhaseServer(EGamePhase::Deal);
 
 	GenerateDeck();
 	ShuffleDeck();
@@ -346,6 +359,9 @@ void AIndianPokerGameModeBase::InitBettingState()
 		return;
 	}
 
+	// 베팅 상태 초기화
+	bHasOpeningCheck = false;
+
 	// Day9 임시 규칙: PlayerArray[0]이 선공
 	FirstActorPS = P1;
 	CurrentActorPS = P1;
@@ -353,8 +369,32 @@ void AIndianPokerGameModeBase::InitBettingState()
 
 	/*UE_LOG(LogTemp, Warning, TEXT("[Bet] FirstActor = %s"), *FirstActorPS->GetPlayerName());
 	UE_LOG(LogTemp, Warning, TEXT("[Bet] CurrentActor = %s"), *CurrentActorPS->GetPlayerName());*/
-	UE_LOG(LogTemp, Warning, TEXT("[Bet] FirstActor PlayerId = %d"), FirstActorPS->GetPlayerId());
-	UE_LOG(LogTemp, Warning, TEXT("[Bet] CurrentActor PlayerId = %d"), CurrentActorPS->GetPlayerId());
+	/*UE_LOG(LogTemp, Warning, TEXT("[Bet] FirstActor PlayerId = %d"), FirstActorPS->GetPlayerId());
+	UE_LOG(LogTemp, Warning, TEXT("[Bet] CurrentActor PlayerId = %d"), CurrentActorPS->GetPlayerId());*/
+	/*UE_LOG(LogTemp, Warning, TEXT("[Bet] FirstActorPS=%s Ptr=%p Id=%d"),
+		*GetNameSafe(FirstActorPS),
+		FirstActorPS,
+		FirstActorPS ? FirstActorPS->GetPlayerId() : -1);
+
+	UE_LOG(LogTemp, Warning, TEXT("[Bet] CurrentActorPS=%s Ptr=%p Id=%d"),
+		*GetNameSafe(CurrentActorPS),
+		CurrentActorPS,
+		CurrentActorPS ? CurrentActorPS->GetPlayerId() : -1);*/
+
+	UE_LOG(LogTemp, Warning, TEXT("[InitBettingState] P1=%s Ptr=%p Id=%d Chips=%d"),
+		*GetNameSafe(P1), P1, P1 ? P1->GetPlayerId() : -1, P1 ? P1->Chips : -1);
+
+	UE_LOG(LogTemp, Warning, TEXT("[InitBettingState] P2=%s Ptr=%p Id=%d Chips=%d"),
+		*GetNameSafe(P2), P2, P2 ? P2->GetPlayerId() : -1, P2 ? P2->Chips : -1);
+
+	UE_LOG(LogTemp, Warning, TEXT("[InitBettingState] FirstActorPS=%s Ptr=%p Id=%d"),
+		*GetNameSafe(FirstActorPS), FirstActorPS,
+		FirstActorPS ? FirstActorPS->GetPlayerId() : -1);
+
+	UE_LOG(LogTemp, Warning, TEXT("[InitBettingState] CurrentActorPS=%s Ptr=%p Id=%d"),
+		*GetNameSafe(CurrentActorPS), CurrentActorPS,
+		CurrentActorPS ? CurrentActorPS->GetPlayerId() : -1);
+
 	UE_LOG(LogTemp, Warning, TEXT("[Bet] RequiredToCall = %d"), RequiredToCall);
 }
 
@@ -435,6 +475,12 @@ void AIndianPokerGameModeBase::ApplyAnte()
 		return;
 	}
 
+	UE_LOG(LogTemp, Warning, TEXT("[ApplyAnte] P1=%s Ptr=%p Id=%d ChipsBefore=%d"),
+		*GetNameSafe(P1), P1, P1 ? P1->GetPlayerId() : -1, P1 ? P1->Chips : -1);
+
+	UE_LOG(LogTemp, Warning, TEXT("[ApplyAnte] P2=%s Ptr=%p Id=%d ChipsBefore=%d"),
+		*GetNameSafe(P2), P2, P2 ? P2->GetPlayerId() : -1, P2 ? P2->Chips : -1);
+
 	// Day9 단계에서는 기본 1칩 Ante만 처리
 	P1->Chips -= 1;
 	P2->Chips -= 1;
@@ -443,8 +489,8 @@ void AIndianPokerGameModeBase::ApplyAnte()
 	RoundBet = 1;
 
 	UE_LOG(LogTemp, Warning, TEXT("[Bet] Ante Applied"));
-	UE_LOG(LogTemp, Warning, TEXT("[Bet] P1 Chips: %d"), P1->Chips);
-	UE_LOG(LogTemp, Warning, TEXT("[Bet] P2 Chips: %d"), P2->Chips);
+	UE_LOG(LogTemp, Warning, TEXT("[Bet] P1 ChipsAfter: %d"), P1->Chips);
+	UE_LOG(LogTemp, Warning, TEXT("[Bet] P2 ChipsAfter: %d"), P2->Chips);
 	UE_LOG(LogTemp, Warning, TEXT("[Bet] Pot: %d"), Pot);
 	UE_LOG(LogTemp, Warning, TEXT("[Bet] RoundBet: %d"), RoundBet);
 }
@@ -462,3 +508,430 @@ EGamePhase AIndianPokerGameModeBase::GetNextPhase(EGamePhase Current)
 	default:                      return EGamePhase::Lobby;
 	}
 }
+
+void AIndianPokerGameModeBase::HandlePlayerAction(AIndianPokerPlayerController* RequestingPC, EBettingActionType ActionType, int32 RaiseExtra)
+{
+	const UEnum* ActionEnum = StaticEnum<EBettingActionType>();
+	const FString ActionString = ActionEnum
+		? ActionEnum->GetNameStringByValue(static_cast<int64>(ActionType))
+		: TEXT("InvalidAction");
+
+	//APlayerState* RequestingPS = RequestingPC ? RequestingPC->GetPlayerState<APlayerState>() : nullptr;
+
+	AIndianPokerPlayerState* RequestingPS = nullptr;
+	AIndianPokerPlayerState* OpponentPS = nullptr;
+
+	/*UE_LOG(LogTemp, Warning, TEXT("[GameMode] HandlePlayerAction - Player=%s, Action=%s, RaiseExtra=%d"),
+		*GetNameSafe(RequestingPS),
+		*ActionString,
+		RaiseExtra);*/
+
+	if (!ValidateActionRequest(RequestingPC, RequestingPS, OpponentPS))
+	{
+		return;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[GameMode] Validated Action - Player=%s Id=%d Action=%s"),
+		*GetNameSafe(RequestingPS),
+		RequestingPS ? RequestingPS->GetPlayerId() : -1,
+		*ActionString);
+
+	switch (ActionType)
+	{
+	case EBettingActionType::Check:
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] Check branch entered"));
+		HandleAction_Check(RequestingPS, OpponentPS);
+		break;
+
+	case EBettingActionType::CheckCall:
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] CheckCall branch entered"));
+		HandleAction_CheckCall(RequestingPS, OpponentPS);
+		break;
+
+	case EBettingActionType::Fold:
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] Fold branch entered"));
+		HandleAction_Fold(RequestingPS, OpponentPS);
+		break;
+
+	default:
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] Unknown action type"));
+		break;
+	}
+}
+
+bool AIndianPokerGameModeBase::ValidateActionRequest(
+	AIndianPokerPlayerController* RequestingPC,
+	AIndianPokerPlayerState*& OutRequestingPS,
+	AIndianPokerPlayerState*& OutOpponentPS)
+{
+	OutRequestingPS = nullptr;
+	OutOpponentPS = nullptr;
+
+	if (!RequestingPC)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ActionValidation] Failed - RequestingPC is null"));
+		return false;
+	}
+
+	/*OutRequestingPS = RequestingPC->GetPlayerState<AIndianPokerPlayerState>();
+	if (!OutRequestingPS)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ActionValidation] Failed - RequestingPS is null"));
+		return false;
+	}*/
+	AIndianPokerPlayerState* ControllerPS = RequestingPC->GetPlayerState<AIndianPokerPlayerState>();
+	if (!ControllerPS) return false;
+
+	const int32 RequestingId = ControllerPS->GetPlayerId();
+
+	if (!GameState || GameState->PlayerArray.Num() != 2)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ActionValidation] Failed - Invalid PlayerArray Num=%d"),
+			GameState ? GameState->PlayerArray.Num() : -1);
+		return false;
+	}
+
+	AIndianPokerPlayerState* P1 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[0]);
+	AIndianPokerPlayerState* P2 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[1]);
+
+	if (!P1 || !P2)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ActionValidation] Failed - PlayerState cast failed"));
+		return false;
+	}
+
+	/*if (OutRequestingPS == P1)
+	{
+		OutOpponentPS = P2;
+	}
+	else if (OutRequestingPS == P2)
+	{
+		OutOpponentPS = P1;
+	}*/
+	if (P1->GetPlayerId() == RequestingId)
+	{
+		OutRequestingPS = P1;
+		OutOpponentPS = P2;
+	}
+	else if (P2->GetPlayerId() == RequestingId)
+	{
+		OutRequestingPS = P2;
+		OutOpponentPS = P1;
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ActionValidation] Failed - RequestingPS not found in PlayerArray"));
+		return false;
+	}
+
+	AIndianPokerGameStateBase* GS = GetGameState<AIndianPokerGameStateBase>();
+	if (!GS)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ActionValidation] Failed - GameState is null"));
+		return false;
+	}
+
+	if (GS->GetCurrentPhase() != EGamePhase::Betting)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ActionValidation] Failed - Phase is not Betting"));
+		return false;
+	}
+
+	if (bRoundEnded)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ActionValidation] Failed - Round already ended"));
+		return false;
+	}
+
+	if (OutRequestingPS->bFolded)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ActionValidation] Failed - Player already folded. PlayerId=%d"),
+			OutRequestingPS->GetPlayerId());
+		return false;
+	}
+
+	/*if (CurrentActorPS != OutRequestingPS)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ActionValidation] Failed - Not current actor. Requesting=%d CurrentActor=%d"),
+			OutRequestingPS->GetPlayerId(),
+			CurrentActorPS ? CurrentActorPS->GetPlayerId() : -1);
+		return false;
+	}*/
+	if (!CurrentActorPS)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ActionValidation] Failed - CurrentActorPS is null"));
+		return false;
+	}
+
+	if (CurrentActorPS->GetPlayerId() != OutRequestingPS->GetPlayerId())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ActionValidation] Failed - Not current actor. Requesting=%d CurrentActor=%d"),
+			OutRequestingPS->GetPlayerId(),
+			CurrentActorPS->GetPlayerId());
+		return false;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[ActionValidation] Success - Requesting=%d Opponent=%d"),
+		OutRequestingPS->GetPlayerId(),
+		OutOpponentPS->GetPlayerId());
+
+	UE_LOG(LogTemp, Warning, TEXT("[ActionValidation] RequestingPS=%s Ptr=%p Id=%d"),
+		*GetNameSafe(OutRequestingPS),
+		OutRequestingPS,
+		OutRequestingPS ? OutRequestingPS->GetPlayerId() : -1);
+
+	UE_LOG(LogTemp, Warning, TEXT("[ActionValidation] CurrentActorPS=%s Ptr=%p Id=%d"),
+		*GetNameSafe(CurrentActorPS),
+		CurrentActorPS,
+		CurrentActorPS ? CurrentActorPS->GetPlayerId() : -1);
+
+	return true;
+}
+
+bool AIndianPokerGameModeBase::HandleAction_Check(
+	AIndianPokerPlayerState* RequestingPS,
+	AIndianPokerPlayerState* OpponentPS)
+{
+	if (!RequestingPS || !OpponentPS)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Check] Failed - RequestingPS or OpponentPS is null"));
+		return false;
+	}
+
+	if (!FirstActorPS)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Check] Failed - FirstActorPS is null"));
+		return false;
+	}
+
+	if (RequestingPS->GetPlayerId() != FirstActorPS->GetPlayerId())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Check] Failed - Only FirstActor can Check. Requesting=%d FirstActor=%d"),
+			RequestingPS->GetPlayerId(),
+			FirstActorPS->GetPlayerId());
+		return false;
+	}
+
+	if (RequiredToCall != 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Check] Failed - RequiredToCall is not zero. RequiredToCall=%d"),
+			RequiredToCall);
+		return false;
+	}
+
+	// bHasOpeningCheck는 후공이 나중에 CheckCall을 할 수 있는 근거
+	bHasOpeningCheck = true;		
+	CurrentActorPS = OpponentPS;
+
+	SyncRoundStateToGameState();
+
+	UE_LOG(LogTemp, Warning, TEXT("[Check] Success - PlayerId=%d checked"), RequestingPS->GetPlayerId());
+	UE_LOG(LogTemp, Warning, TEXT("[Check] bHasOpeningCheck=true"));
+	UE_LOG(LogTemp, Warning, TEXT("[Check] Turn passed to PlayerId=%d"),
+		CurrentActorPS ? CurrentActorPS->GetPlayerId() : -1);
+	UE_LOG(LogTemp, Warning, TEXT("[Check] Pot=%d RoundBet=%d RequiredToCall=%d"),
+		Pot, RoundBet, RequiredToCall);
+
+	return true;
+}
+
+bool AIndianPokerGameModeBase::HandleAction_CheckCall(
+	AIndianPokerPlayerState* RequestingPS,
+	AIndianPokerPlayerState* OpponentPS)
+{
+	if (!RequestingPS || !OpponentPS)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[CheckCall] Failed - RequestingPS or OpponentPS is null"));
+		return false;
+	}
+
+	if (!bHasOpeningCheck)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[CheckCall] Failed - bHasOpeningCheck is false"));
+		return false;
+	}
+
+	if (RequiredToCall != 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[CheckCall] Failed - RequiredToCall is not zero. RequiredToCall=%d"),
+			RequiredToCall);
+		return false;
+	}
+
+	SetPhaseServer(EGamePhase::Showdown);
+
+	UE_LOG(LogTemp, Warning, TEXT("[CheckCall] Success - PlayerId=%d check-called"), RequestingPS->GetPlayerId());
+	UE_LOG(LogTemp, Warning, TEXT("[CheckCall] bHasOpeningCheck=%s"), bHasOpeningCheck ? TEXT("true") : TEXT("false"));
+	UE_LOG(LogTemp, Warning, TEXT("[CheckCall] Enter Showdown"));
+	UE_LOG(LogTemp, Warning, TEXT("[CheckCall] Pot=%d RoundBet=%d RequiredToCall=%d"),
+		Pot, RoundBet, RequiredToCall);
+
+	return true;
+}
+
+bool AIndianPokerGameModeBase::HandleAction_Fold(
+	AIndianPokerPlayerState* RequestingPS,
+	AIndianPokerPlayerState* OpponentPS)
+{
+	if (!RequestingPS || !OpponentPS)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Fold] Failed - RequestingPS or OpponentPS is null"));
+		return false;
+	}
+
+	if (RequestingPS->bFolded)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Fold] Failed - Player already folded. PlayerId=%d"),
+			RequestingPS->GetPlayerId());
+		return false;
+	}
+
+	RequestingPS->bFolded = true;
+
+	UE_LOG(LogTemp, Warning, TEXT("[Fold] PlayerId=%d folded"), RequestingPS->GetPlayerId());
+
+	ResolveFoldRound(RequestingPS, OpponentPS);
+	return true;
+}
+
+void AIndianPokerGameModeBase::ResolveFoldRound(
+	AIndianPokerPlayerState* FolderPS,
+	AIndianPokerPlayerState* WinnerPS)
+{
+	if (!FolderPS || !WinnerPS)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[FoldResolve] Failed - FolderPS or WinnerPS is null"));
+		return;
+	}
+
+	const int32 PotBeforeAward = Pot;
+	const int32 WinnerChipsBefore = WinnerPS->Chips;
+	const int32 FolderChipsBefore = FolderPS->Chips;
+	const int32 FolderHiddenCard = FolderPS->HiddenCardValue;
+
+	// 승자에게 Pot 지급
+	WinnerPS->Chips += PotBeforeAward;
+
+	// 10 카드 폴드 패널티
+	bool bAppliedTenPenalty = false;
+	if (FolderHiddenCard == 10)
+	{
+		FolderPS->Chips -= 10;
+		bAppliedTenPenalty = true;
+	}
+
+	const int32 WinnerChipsAfter = WinnerPS->Chips;
+	const int32 FolderChipsAfter = FolderPS->Chips;
+
+	bRoundEnded = true;
+	CurrentActorPS = nullptr;
+
+	SetPhaseServer(EGamePhase::RoundResult);
+
+	UE_LOG(LogTemp, Warning, TEXT("[FoldResolve] Round Ended by Fold"));
+	UE_LOG(LogTemp, Warning, TEXT("[FoldResolve] Winner=%s Ptr=%p Id=%d ChipsBefore=%d"),
+		*GetNameSafe(WinnerPS), WinnerPS,
+		WinnerPS ? WinnerPS->GetPlayerId() : -1,
+		WinnerChipsBefore);
+
+	UE_LOG(LogTemp, Warning, TEXT("[FoldResolve] Folder=%s Ptr=%p Id=%d ChipsBefore=%d"),
+		*GetNameSafe(FolderPS), FolderPS,
+		FolderPS ? FolderPS->GetPlayerId() : -1,
+		FolderChipsBefore);
+
+	UE_LOG(LogTemp, Warning, TEXT("[FoldResolve] Pot Awarded=%d"), PotBeforeAward);
+	UE_LOG(LogTemp, Warning, TEXT("[FoldResolve] Winner Chips: %d -> %d"),
+		WinnerChipsBefore, WinnerChipsAfter);
+	UE_LOG(LogTemp, Warning, TEXT("[FoldResolve] Folder Chips: %d -> %d"),
+		FolderChipsBefore, FolderChipsAfter);
+
+	if (bAppliedTenPenalty)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[FoldResolve] Ten-card penalty applied to PlayerId=%d"),
+			FolderPS->GetPlayerId());
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[FoldResolve] No ten-card penalty"));
+	}
+
+	Pot = 0;
+	RoundBet = 0;
+	RequiredToCall = 0;
+
+	SyncRoundStateToGameState();
+
+	UE_LOG(LogTemp, Warning, TEXT("[FoldResolve] State Reset After Fold - Pot=%d RoundBet=%d RequiredToCall=%d"),
+		Pot, RoundBet, RequiredToCall);
+}
+
+//void AIndianPokerGameModeBase::ResolveFoldRound(
+//	AIndianPokerPlayerState* FolderPS,
+//	AIndianPokerPlayerState* WinnerPS)
+//{
+//	if (!FolderPS || !WinnerPS)
+//	{
+//		UE_LOG(LogTemp, Warning, TEXT("[FoldResolve] Failed - FolderPS or WinnerPS is null"));
+//		return;
+//	}
+//
+//	const int32 PotBeforeAward = Pot;
+//	const int32 WinnerChipsBefore = WinnerPS->Chips;
+//	const int32 FolderChipsBefore = FolderPS->Chips;
+//
+//	// 승자에게 Pot 지급
+//	WinnerPS->Chips += Pot;
+//	//WinnerPS->SetChips(WinnerPS->GetChips() + Pot);
+//
+//	// 10 카드 폴드 패널티
+//	bool bAppliedTenPenalty = false;
+//	if (FolderPS->HiddenCardValue == 10)
+//	{
+//		//FolderPS->SetChips(FolderPS->GetChips() - 10);
+//		FolderPS->Chips -= 10;
+//		bAppliedTenPenalty = true;
+//	}
+//
+//	bRoundEnded = true;
+//	CurrentActorPS = nullptr;
+//
+//	SetPhaseServer(EGamePhase::RoundResult);
+//
+//	UE_LOG(LogTemp, Warning, TEXT("[FoldResolve] Round Ended by Fold"));
+//	/*UE_LOG(LogTemp, Warning, TEXT("[FoldResolve] Folder PlayerId=%d"), FolderPS->GetPlayerId());
+//	UE_LOG(LogTemp, Warning, TEXT("[FoldResolve] Winner PlayerId=%d"), WinnerPS->GetPlayerId());*/
+//	UE_LOG(LogTemp, Warning, TEXT("[FoldResolve] Winner=%s Ptr=%p Id=%d ChipsBefore=%d"),
+//		*GetNameSafe(WinnerPS), WinnerPS,
+//		WinnerPS ? WinnerPS->GetPlayerId() : -1,
+//		WinnerPS ? WinnerPS->Chips : -1);
+//
+//	UE_LOG(LogTemp, Warning, TEXT("[FoldResolve] Folder=%s Ptr=%p Id=%d ChipsBefore=%d"),
+//		*GetNameSafe(FolderPS), FolderPS,
+//		FolderPS ? FolderPS->GetPlayerId() : -1,
+//		FolderPS ? FolderPS->Chips : -1);
+//
+//	UE_LOG(LogTemp, Warning, TEXT("[FoldResolve] Pot Awarded=%d"), PotBeforeAward);
+//	UE_LOG(LogTemp, Warning, TEXT("[FoldResolve] Winner Chips: %d -> %d"),
+//		WinnerChipsBefore, WinnerPS->Chips);
+//	UE_LOG(LogTemp, Warning, TEXT("[FoldResolve] Folder Chips: %d -> %d"),
+//		FolderChipsBefore, FolderPS->Chips);
+//
+//	if (bAppliedTenPenalty)
+//	{
+//		UE_LOG(LogTemp, Warning, TEXT("[FoldResolve] Ten-card penalty applied to PlayerId=%d"),
+//			FolderPS->GetPlayerId());
+//	}
+//	else
+//	{
+//		UE_LOG(LogTemp, Warning, TEXT("[FoldResolve] No ten-card penalty"));
+//	}
+//
+//	Pot = 0;
+//	RoundBet = 0;
+//	RequiredToCall = 0;
+//
+//	SyncRoundStateToGameState();
+//
+//	UE_LOG(LogTemp, Warning, TEXT("[FoldResolve] State Reset After Fold - Pot=%d RoundBet=%d RequiredToCall=%d"),
+//		Pot, RoundBet, RequiredToCall);
+//}

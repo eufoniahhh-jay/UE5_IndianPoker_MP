@@ -7,6 +7,7 @@
 #include "IndianPokerGameModeBase.h"
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/PlayerState.h"
 #include "EnhancedInputSubsystems.h"
 #include "EnhancedInputComponent.h"
 #include "InputActionValue.h"
@@ -16,6 +17,7 @@
 #include "IndianPokerSessionSubsystem.h"
 #include "Engine/GameInstance.h"
 #include "Kismet/GameplayStatics.h"
+#include "BettingTypes.h"
 
 void AIndianPokerPlayerController::BeginPlay()
 {
@@ -204,6 +206,16 @@ void AIndianPokerPlayerController::SetupInputComponent()
 
 	if (IA_SessionDestroy)
 		EIC->BindAction(IA_SessionDestroy, ETriggerEvent::Started, this, &AIndianPokerPlayerController::TestDestroy);
+
+	// Day10. 클라이언트 입력으로 액션(베팅) 요청
+	if (IA_Check)
+		EIC->BindAction(IA_Check, ETriggerEvent::Started, this, &AIndianPokerPlayerController::RequestCheck);
+
+	if (IA_CheckCall)
+		EIC->BindAction(IA_CheckCall, ETriggerEvent::Started, this, &AIndianPokerPlayerController::RequestCheckCall);
+
+	if (IA_Fold)
+		EIC->BindAction(IA_Fold, ETriggerEvent::Started, this, &AIndianPokerPlayerController::RequestFold);
 }
 
 // RMB 누를 때만 Look 구현. 
@@ -347,4 +359,52 @@ void AIndianPokerPlayerController::ClientReceiveVisibleOpponentCard_Implementati
 	UE_LOG(LogTemp, Warning, TEXT("[Client] Visible Opponent Card = %d | PC=%s"),
 		ClientVisibleOpponentCardValue,
 		*GetName());
+}
+
+void AIndianPokerPlayerController::Server_RequestAction_Implementation(EBettingActionType ActionType, int32 RaiseExtra)
+{
+	/*const FString ActionString = StaticEnum<EBettingActionType>()->GetNameStringByValue(static_cast<int64>(ActionType));
+
+	APlayerState* PS = GetPlayerState<APlayerState>();
+
+	UE_LOG(LogTemp, Warning, TEXT("[Server_RequestAction] Player=%s, Action=%s, RaiseExtra=%d"),
+		*GetNameSafe(PS),
+		*ActionString,
+		RaiseExtra);*/
+
+	const UEnum* ActionEnum = StaticEnum<EBettingActionType>();
+	const FString ActionString = ActionEnum
+		? ActionEnum->GetNameStringByValue(static_cast<int64>(ActionType))
+		: TEXT("InvalidAction");
+
+	APlayerState* PS = GetPlayerState<APlayerState>();
+
+	UE_LOG(LogTemp, Warning, TEXT("[Server_RequestAction] Player=%s, Action=%s, RaiseExtra=%d"),
+		*GetNameSafe(PS),
+		*ActionString,
+		RaiseExtra);
+
+	AIndianPokerGameModeBase* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AIndianPokerGameModeBase>() : nullptr;
+	if (!GM)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Server_RequestAction] GameMode is null"));
+		return;
+	}
+
+	GM->HandlePlayerAction(this, ActionType, RaiseExtra);
+}
+
+void AIndianPokerPlayerController::RequestCheck()
+{
+	Server_RequestAction(EBettingActionType::Check, 0);
+}
+
+void AIndianPokerPlayerController::RequestCheckCall()
+{
+	Server_RequestAction(EBettingActionType::CheckCall, 0);
+}
+
+void AIndianPokerPlayerController::RequestFold()
+{
+	Server_RequestAction(EBettingActionType::Fold, 0);
 }

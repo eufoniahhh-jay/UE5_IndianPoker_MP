@@ -158,6 +158,9 @@ void AIndianPokerGameModeBase::SetPhaseServer(EGamePhase NewPhase)
 
 void AIndianPokerGameModeBase::SyncRoundStateToGameState()
 {
+	UE_LOG(LogTemp, Warning, TEXT("[SyncRoundStateToGameState] Pot=%d RoundBet=%d FirstActorPlayerId=%d CurrentActorPlayerId=%d"),
+		Pot, RoundBet, AuthFirstActorPlayerId, AuthCurrentActorPlayerId);
+
 	AIndianPokerGameStateBase* GS = GetIndianPokerGameState();
 	if (!GS)
 	{
@@ -169,7 +172,7 @@ void AIndianPokerGameModeBase::SyncRoundStateToGameState()
 	GS->SetRoundBetServer(RoundBet);
 
 	// 아직 커스텀 PlayerState가 없거나 GetPlayerId() 쓰기 애매하면, 그냥 임시로 0으로 설정도 가능
-	int32 FirstActorId = -1;
+	/*int32 FirstActorId = -1;
 	int32 CurrentActorId = -1;
 
 	if (FirstActorPS)
@@ -183,8 +186,13 @@ void AIndianPokerGameModeBase::SyncRoundStateToGameState()
 	}
 
 	GS->SetFirstActorPlayerIdServer(FirstActorId);
-	GS->SetCurrentActorPlayerIdServer(CurrentActorId);
+	GS->SetCurrentActorPlayerIdServer(CurrentActorId);*/
 
+	GS->SetFirstActorPlayerIdServer(AuthFirstActorPlayerId);
+	GS->SetCurrentActorPlayerIdServer(AuthCurrentActorPlayerId);
+
+	UE_LOG(LogTemp, Warning, TEXT("[GameMode] Sync FirstActorPlayerId=%d"), AuthFirstActorPlayerId);
+	UE_LOG(LogTemp, Warning, TEXT("[GameMode] Sync CurrentActorPlayerId=%d"), AuthCurrentActorPlayerId);
 	UE_LOG(LogTemp, Warning, TEXT("[GameMode] Round state synced to GameState"));
 }
 
@@ -229,15 +237,23 @@ void AIndianPokerGameModeBase::StartRound()
 	//SetPhaseServer(EGamePhase::Deal);
 
 	// 임시값
-	FirstActorPS = nullptr;
-	CurrentActorPS = nullptr;
+	/*FirstActorPS = nullptr;
+	CurrentActorPS = nullptr;*/
 
-	AIndianPokerPlayerState* P1 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[0]);
-	AIndianPokerPlayerState* P2 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[1]);
+	AuthFirstActorPlayerId = INDEX_NONE;
+	AuthCurrentActorPlayerId = INDEX_NONE;
+
+	/*AIndianPokerPlayerState* P1 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[0]);
+	AIndianPokerPlayerState* P2 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[1]);*/
+	// Day11. PlayerState 라운드 시작시 PlayerState 캐시하기
+	AIndianPokerGameStateBase* GS = GetIndianPokerGameState();
+
+	RoundP1PS = Cast<AIndianPokerPlayerState>(GS->PlayerArray[0]);
+	RoundP2PS = Cast<AIndianPokerPlayerState>(GS->PlayerArray[1]);
 
 	// 플레이어별 라운드 상태 초기화
-	P1->bFolded = false;
-	P2->bFolded = false;
+	RoundP1PS->bFolded = false;
+	RoundP2PS->bFolded = false;
 
 	UE_LOG(LogTemp, Warning, TEXT("[Round] Reset Round State - bRoundEnded=false, P1/P2 Folded=false"));
 
@@ -324,8 +340,14 @@ void AIndianPokerGameModeBase::DealCards()
 		return;
 	}
 
-	AIndianPokerPlayerState* P1 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[0]);
-	AIndianPokerPlayerState* P2 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[1]);
+	/*AIndianPokerPlayerState* P1 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[0]);
+	AIndianPokerPlayerState* P2 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[1]);*/
+	AIndianPokerPlayerState* P1 = nullptr;
+	AIndianPokerPlayerState* P2 = nullptr;
+	if (!GetCachedRoundPlayers(P1, P2))
+	{
+		return;
+	}
 
 	if (!P1 || !P2)
 	{
@@ -350,8 +372,14 @@ void AIndianPokerGameModeBase::InitBettingState()
 		return;
 	}
 
-	AIndianPokerPlayerState* P1 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[0]);
-	AIndianPokerPlayerState* P2 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[1]);
+	/*AIndianPokerPlayerState* P1 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[0]);
+	AIndianPokerPlayerState* P2 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[1]);*/
+	AIndianPokerPlayerState* P1 = nullptr;
+	AIndianPokerPlayerState* P2 = nullptr;
+	if (!GetCachedRoundPlayers(P1, P2))
+	{
+		return;
+	}
 
 	if (!P1 || !P2)
 	{
@@ -363,8 +391,13 @@ void AIndianPokerGameModeBase::InitBettingState()
 	bHasOpeningCheck = false;
 
 	// Day9 임시 규칙: PlayerArray[0]이 선공
-	FirstActorPS = P1;
-	CurrentActorPS = P1;
+	/*FirstActorPS = P1;
+	CurrentActorPS = P1;*/
+
+	// Day11
+	AuthFirstActorPlayerId = P1 ? P1->GetPlayerId() : INDEX_NONE;
+	AuthCurrentActorPlayerId = P1 ? P1->GetPlayerId() : INDEX_NONE;
+
 	RequiredToCall = 0;
 
 	/*UE_LOG(LogTemp, Warning, TEXT("[Bet] FirstActor = %s"), *FirstActorPS->GetPlayerName());
@@ -387,13 +420,16 @@ void AIndianPokerGameModeBase::InitBettingState()
 	UE_LOG(LogTemp, Warning, TEXT("[InitBettingState] P2=%s Ptr=%p Id=%d Chips=%d"),
 		*GetNameSafe(P2), P2, P2 ? P2->GetPlayerId() : -1, P2 ? P2->Chips : -1);
 
-	UE_LOG(LogTemp, Warning, TEXT("[InitBettingState] FirstActorPS=%s Ptr=%p Id=%d"),
+	/*UE_LOG(LogTemp, Warning, TEXT("[InitBettingState] FirstActorPS=%s Ptr=%p Id=%d"),
 		*GetNameSafe(FirstActorPS), FirstActorPS,
 		FirstActorPS ? FirstActorPS->GetPlayerId() : -1);
 
 	UE_LOG(LogTemp, Warning, TEXT("[InitBettingState] CurrentActorPS=%s Ptr=%p Id=%d"),
 		*GetNameSafe(CurrentActorPS), CurrentActorPS,
-		CurrentActorPS ? CurrentActorPS->GetPlayerId() : -1);
+		CurrentActorPS ? CurrentActorPS->GetPlayerId() : -1);*/
+
+	UE_LOG(LogTemp, Warning, TEXT("[InitBettingState] FirstActorPlayerId=%d"), AuthFirstActorPlayerId);
+	UE_LOG(LogTemp, Warning, TEXT("[InitBettingState] CurrentActorPlayerId=%d"), AuthCurrentActorPlayerId);
 
 	UE_LOG(LogTemp, Warning, TEXT("[Bet] RequiredToCall = %d"), RequiredToCall);
 }
@@ -407,8 +443,14 @@ void AIndianPokerGameModeBase::SetVisibleOpponentCards()
 		return;
 	}
 
-	AIndianPokerPlayerState* P1 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[0]);
-	AIndianPokerPlayerState* P2 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[1]);
+	/*AIndianPokerPlayerState* P1 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[0]);
+	AIndianPokerPlayerState* P2 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[1]);*/
+	AIndianPokerPlayerState* P1 = nullptr;
+	AIndianPokerPlayerState* P2 = nullptr;
+	if (!GetCachedRoundPlayers(P1, P2))
+	{
+		return;
+	}
 
 	if (!P1 || !P2)
 	{
@@ -432,8 +474,14 @@ void AIndianPokerGameModeBase::SendVisibleOpponentCardsToClients()
 		return;
 	}
 
-	AIndianPokerPlayerState* P1 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[0]);
-	AIndianPokerPlayerState* P2 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[1]);
+	/*AIndianPokerPlayerState* P1 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[0]);
+	AIndianPokerPlayerState* P2 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[1]);*/
+	AIndianPokerPlayerState* P1 = nullptr;
+	AIndianPokerPlayerState* P2 = nullptr;
+	if (!GetCachedRoundPlayers(P1, P2))
+	{
+		return;
+	}
 
 	if (!P1 || !P2)
 	{
@@ -466,8 +514,14 @@ void AIndianPokerGameModeBase::ApplyAnte()
 		return;
 	}
 
-	AIndianPokerPlayerState* P1 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[0]);
-	AIndianPokerPlayerState* P2 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[1]);
+	/*AIndianPokerPlayerState* P1 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[0]);
+	AIndianPokerPlayerState* P2 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[1]);*/
+	AIndianPokerPlayerState* P1 = nullptr;
+	AIndianPokerPlayerState* P2 = nullptr;
+	if (!GetCachedRoundPlayers(P1, P2))
+	{
+		return;
+	}
 
 	if (!P1 || !P2)
 	{
@@ -580,7 +634,11 @@ bool AIndianPokerGameModeBase::ValidateActionRequest(
 		return false;
 	}*/
 	AIndianPokerPlayerState* ControllerPS = RequestingPC->GetPlayerState<AIndianPokerPlayerState>();
-	if (!ControllerPS) return false;
+
+	if (!ControllerPS) {
+		UE_LOG(LogTemp, Warning, TEXT("[ActionValidation] Failed - ControllerPS is null"));
+		return false;
+	}
 
 	const int32 RequestingId = ControllerPS->GetPlayerId();
 
@@ -591,8 +649,18 @@ bool AIndianPokerGameModeBase::ValidateActionRequest(
 		return false;
 	}
 
-	AIndianPokerPlayerState* P1 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[0]);
-	AIndianPokerPlayerState* P2 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[1]);
+	/*AIndianPokerPlayerState* P1 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[0]);
+	AIndianPokerPlayerState* P2 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[1]);*/
+	// Day11. 헬퍼 사용으로 변경
+	AIndianPokerPlayerState* P1 = nullptr;
+	AIndianPokerPlayerState* P2 = nullptr;
+	
+	//if (!GetRoundPlayerStates(P1, P2))
+	if (!GetCachedRoundPlayers(P1, P2))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ActionValidation] Failed - GetRoundPlayerStates failed"));
+		return false;
+	}
 
 	if (!P1 || !P2)
 	{
@@ -657,7 +725,7 @@ bool AIndianPokerGameModeBase::ValidateActionRequest(
 			CurrentActorPS ? CurrentActorPS->GetPlayerId() : -1);
 		return false;
 	}*/
-	if (!CurrentActorPS)
+	/*if (!CurrentActorPS)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[ActionValidation] Failed - CurrentActorPS is null"));
 		return false;
@@ -669,13 +737,27 @@ bool AIndianPokerGameModeBase::ValidateActionRequest(
 			OutRequestingPS->GetPlayerId(),
 			CurrentActorPS->GetPlayerId());
 		return false;
+	}*/
+	// Day11.
+	if (AuthCurrentActorPlayerId == INDEX_NONE)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ActionValidation] Failed - CurrentActorPlayerId is INDEX_NONE"));
+		return false;
+	}
+
+	if (AuthCurrentActorPlayerId != OutRequestingPS->GetPlayerId())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ActionValidation] Failed - Not current actor. Requesting=%d CurrentActor=%d"),
+			OutRequestingPS->GetPlayerId(),
+			AuthCurrentActorPlayerId);
+		return false;
 	}
 
 	UE_LOG(LogTemp, Warning, TEXT("[ActionValidation] Success - Requesting=%d Opponent=%d"),
 		OutRequestingPS->GetPlayerId(),
 		OutOpponentPS->GetPlayerId());
 
-	UE_LOG(LogTemp, Warning, TEXT("[ActionValidation] RequestingPS=%s Ptr=%p Id=%d"),
+	/*UE_LOG(LogTemp, Warning, TEXT("[ActionValidation] RequestingPS=%s Ptr=%p Id=%d"),
 		*GetNameSafe(OutRequestingPS),
 		OutRequestingPS,
 		OutRequestingPS ? OutRequestingPS->GetPlayerId() : -1);
@@ -683,7 +765,14 @@ bool AIndianPokerGameModeBase::ValidateActionRequest(
 	UE_LOG(LogTemp, Warning, TEXT("[ActionValidation] CurrentActorPS=%s Ptr=%p Id=%d"),
 		*GetNameSafe(CurrentActorPS),
 		CurrentActorPS,
-		CurrentActorPS ? CurrentActorPS->GetPlayerId() : -1);
+		CurrentActorPS ? CurrentActorPS->GetPlayerId() : -1);*/
+
+	UE_LOG(LogTemp, Warning, TEXT("[ActionValidation] CurrentActorPlayerId=%d"), AuthCurrentActorPlayerId);
+
+	UE_LOG(LogTemp, Warning, TEXT("[ActionValidation] RequestingId=%d CurrentActorPlayerId=%d FirstActorPlayerId=%d"),
+		OutRequestingPS ? OutRequestingPS->GetPlayerId() : -1,
+		AuthCurrentActorPlayerId,
+		AuthFirstActorPlayerId);
 
 	return true;
 }
@@ -698,7 +787,7 @@ bool AIndianPokerGameModeBase::HandleAction_Check(
 		return false;
 	}
 
-	if (!FirstActorPS)
+	/*if (!FirstActorPS)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Check] Failed - FirstActorPS is null"));
 		return false;
@@ -710,6 +799,20 @@ bool AIndianPokerGameModeBase::HandleAction_Check(
 			RequestingPS->GetPlayerId(),
 			FirstActorPS->GetPlayerId());
 		return false;
+	}*/
+	// Day11
+	if (AuthFirstActorPlayerId == INDEX_NONE)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Check] Failed - FirstActorPlayerId is INDEX_NONE"));
+		return false;
+	}
+
+	if (RequestingPS->GetPlayerId() != AuthFirstActorPlayerId)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Check] Failed - Only FirstActor can Check. Requesting=%d FirstActor=%d"),
+			RequestingPS->GetPlayerId(),
+			AuthFirstActorPlayerId);
+		return false;
 	}
 
 	if (RequiredToCall != 0)
@@ -719,16 +822,35 @@ bool AIndianPokerGameModeBase::HandleAction_Check(
 		return false;
 	}
 
+	// Day11
+	UE_LOG(LogTemp, Warning, TEXT("[CheckDebug] RequestingPS=%s Ptr=%p Id=%d"),
+		*GetNameSafe(RequestingPS),
+		RequestingPS,
+		RequestingPS ? RequestingPS->GetPlayerId() : -1);
+
+	UE_LOG(LogTemp, Warning, TEXT("[CheckDebug] OpponentPS=%s Ptr=%p Id=%d"),
+		*GetNameSafe(OpponentPS),
+		OpponentPS,
+		OpponentPS ? OpponentPS->GetPlayerId() : -1);
+
+	UE_LOG(LogTemp, Warning, TEXT("[CheckDebug] Before Assign CurrentActorPlayerId=%d"), AuthCurrentActorPlayerId);
+
 	// bHasOpeningCheck는 후공이 나중에 CheckCall을 할 수 있는 근거
 	bHasOpeningCheck = true;		
-	CurrentActorPS = OpponentPS;
+	//CurrentActorPS = OpponentPS;
+	AuthCurrentActorPlayerId = OpponentPS ? OpponentPS->GetPlayerId() : INDEX_NONE;
+	UE_LOG(LogTemp, Warning, TEXT("[CheckDebug] After Assign CurrentActorPlayerId=%d"), AuthCurrentActorPlayerId);
 
+	UE_LOG(LogTemp, Warning, TEXT("[CheckDebug] Before Sync CurrentActorPlayerId=%d"), AuthCurrentActorPlayerId);
 	SyncRoundStateToGameState();
+
 
 	UE_LOG(LogTemp, Warning, TEXT("[Check] Success - PlayerId=%d checked"), RequestingPS->GetPlayerId());
 	UE_LOG(LogTemp, Warning, TEXT("[Check] bHasOpeningCheck=true"));
-	UE_LOG(LogTemp, Warning, TEXT("[Check] Turn passed to PlayerId=%d"),
-		CurrentActorPS ? CurrentActorPS->GetPlayerId() : -1);
+	UE_LOG(LogTemp, Warning, TEXT("[Check] RequestingId=%d FirstActorPlayerId=%d CurrentActorPlayerId=%d"),
+		RequestingPS->GetPlayerId(), AuthFirstActorPlayerId, AuthCurrentActorPlayerId);
+	UE_LOG(LogTemp, Warning, TEXT("[Check] Turn passed to PlayerId=%d"), AuthCurrentActorPlayerId);
+		/*CurrentActorPS ? CurrentActorPS->GetPlayerId() : -1);*/
 	UE_LOG(LogTemp, Warning, TEXT("[Check] Pot=%d RoundBet=%d RequiredToCall=%d"),
 		Pot, RoundBet, RequiredToCall);
 
@@ -824,7 +946,8 @@ void AIndianPokerGameModeBase::ResolveFoldRound(
 	const int32 FolderChipsAfter = FolderPS->Chips;
 
 	bRoundEnded = true;
-	CurrentActorPS = nullptr;
+	//CurrentActorPS = nullptr;
+	AuthCurrentActorPlayerId = INDEX_NONE;
 
 	SetPhaseServer(EGamePhase::RoundResult);
 
@@ -935,3 +1058,60 @@ void AIndianPokerGameModeBase::ResolveFoldRound(
 //	UE_LOG(LogTemp, Warning, TEXT("[FoldResolve] State Reset After Fold - Pot=%d RoundBet=%d RequiredToCall=%d"),
 //		Pot, RoundBet, RequiredToCall);
 //}
+
+bool AIndianPokerGameModeBase::GetRoundPlayerStates(
+	AIndianPokerPlayerState*& OutP1,
+	AIndianPokerPlayerState*& OutP2) const
+{
+	OutP1 = nullptr;
+	OutP2 = nullptr;
+
+	const AIndianPokerGameStateBase* GS = GetGameState<AIndianPokerGameStateBase>();
+	if (!GS)
+	{
+		return false;
+	}
+
+	if (GS->PlayerArray.Num() != 2)
+	{
+		return false;
+	}
+
+	OutP1 = Cast<AIndianPokerPlayerState>(GS->PlayerArray[0]);
+	OutP2 = Cast<AIndianPokerPlayerState>(GS->PlayerArray[1]);
+
+	return (OutP1 && OutP2);
+}
+
+AIndianPokerPlayerState* AIndianPokerGameModeBase::FindRoundPlayerStateById(int32 PlayerId) const
+{
+	AIndianPokerPlayerState* P1 = nullptr;
+	AIndianPokerPlayerState* P2 = nullptr;
+
+	//if (!GetRoundPlayerStates(P1, P2))
+	if (!GetCachedRoundPlayers(P1, P2))
+	{
+		return nullptr;
+	}
+
+	if (P1 && P1->GetPlayerId() == PlayerId)
+	{
+		return P1;
+	}
+
+	if (P2 && P2->GetPlayerId() == PlayerId)
+	{
+		return P2;
+	}
+
+	return nullptr;
+}
+
+bool AIndianPokerGameModeBase::GetCachedRoundPlayers(
+	AIndianPokerPlayerState*& OutP1,
+	AIndianPokerPlayerState*& OutP2) const
+{
+	OutP1 = RoundP1PS;
+	OutP2 = RoundP2PS;
+	return (OutP1 && OutP2);
+}

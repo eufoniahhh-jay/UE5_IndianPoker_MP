@@ -92,11 +92,26 @@ protected:
 	int32 RequiredToCall = 0;
 
 	// 지금은 단순히 포인터로 시작(Day9)
-	UPROPERTY()
+	/*UPROPERTY()
 	AIndianPokerPlayerState* FirstActorPS = nullptr;
 
 	UPROPERTY()
-	AIndianPokerPlayerState* CurrentActorPS = nullptr;
+	AIndianPokerPlayerState* CurrentActorPS = nullptr;*/
+
+	// Day11. PS 포인터 대신 플레이어ID 기준으로 관리하도록 변경 
+	// (그래도 여전히 플레이어데이터는 PS에. PID기준으로 PS찾도록 하는 것)
+	UPROPERTY()
+	int32 AuthFirstActorPlayerId = INDEX_NONE;
+
+	UPROPERTY()
+	int32 AuthCurrentActorPlayerId = INDEX_NONE;
+
+	// Day11. 그리고 그냥 authoritative로 PlayerState를 들고있기 (라운드 시작시 2명을 캐시하기)
+	UPROPERTY()
+	TObjectPtr<AIndianPokerPlayerState> RoundP1PS = nullptr;
+
+	UPROPERTY()
+	TObjectPtr<AIndianPokerPlayerState> RoundP2PS = nullptr;
 
 public:
 	// Day10. 
@@ -135,4 +150,20 @@ public:
 		AIndianPokerPlayerState* FolderPS,
 		AIndianPokerPlayerState* WinnerPS
 	);
+
+public:
+	// Day11. 누구인지 기억하는 건 ID, 실제 상태가 필요할 때만 헬퍼로 PlayerState를 찾는다
+	// 헬퍼 함수
+	bool GetRoundPlayerStates(
+		AIndianPokerPlayerState*& OutP1,
+		AIndianPokerPlayerState*& OutP2
+	) const;
+
+	AIndianPokerPlayerState* FindRoundPlayerStateById(int32 PlayerId) const;
+
+	// 라운드 시작시 참가자 캐시하기
+	bool GetCachedRoundPlayers(
+		AIndianPokerPlayerState*& OutP1,
+		AIndianPokerPlayerState*& OutP2
+	) const;
 };

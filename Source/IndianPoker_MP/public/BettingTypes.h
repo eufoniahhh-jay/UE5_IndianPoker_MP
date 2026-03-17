@@ -8,5 +8,7 @@ enum class EBettingActionType : uint8
 {
 	Check		UMETA(DisplayName = "Check"),
 	CheckCall	UMETA(DisplayName = "CheckCall"),
-	Fold		UMETA(DisplayName = "Fold")
+	Fold		UMETA(DisplayName = "Fold"),
+	Call		UMETA(DisplayName = "Call"),
+	Raise		UMETA(DisplayName = "Raise")
 };

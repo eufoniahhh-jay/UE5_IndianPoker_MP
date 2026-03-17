@@ -10,3 +10,13 @@ AIndianPokerPlayerState::AIndianPokerPlayerState()
 	HiddenCardValue = -1;
 	VisibleOpponentCardValue = -1;
 }
+
+void AIndianPokerPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+    Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+    DOREPLIFETIME(AIndianPokerPlayerState, Chips);
+    DOREPLIFETIME(AIndianPokerPlayerState, VisibleOpponentCardValue);
+    DOREPLIFETIME(AIndianPokerPlayerState, bFolded);
+    DOREPLIFETIME(AIndianPokerPlayerState, CurrentRoundContribution);
+}

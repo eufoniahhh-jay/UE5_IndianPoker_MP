@@ -145,6 +145,17 @@ public:
 		AIndianPokerPlayerState* OpponentPS
 	);
 
+	// Day12. Call / Raise 액션 함수
+	bool HandleAction_Call(
+		AIndianPokerPlayerState* RequestingPS, 
+		AIndianPokerPlayerState* OpponentPS
+	);
+
+	bool HandleAction_Raise(
+		AIndianPokerPlayerState* RequestingPS,
+		AIndianPokerPlayerState* OpponentPS,
+		int32 RaiseExtra);
+
 	// Fold 후 정산 함수
 	void ResolveFoldRound(
 		AIndianPokerPlayerState* FolderPS,
@@ -166,4 +177,11 @@ public:
 		AIndianPokerPlayerState*& OutP1,
 		AIndianPokerPlayerState*& OutP2
 	) const;
+
+protected:
+	// Day12. RequiredToCall 계산용 헬퍼 3개
+	// PlayerId로 내 PlayerState 찾기 / PlayerId로 상대 PlayerState 찾기/ 두 기여량 차이로 RequiredToCall 계산하기
+	AIndianPokerPlayerState* GetPlayerStateByPlayerId(int32 PlayerId) const;
+	AIndianPokerPlayerState* GetOpponentPlayerStateByPlayerId(int32 PlayerId) const;
+	int32 CalcRequiredToCall(int32 RequestPlayerId) const;
 };

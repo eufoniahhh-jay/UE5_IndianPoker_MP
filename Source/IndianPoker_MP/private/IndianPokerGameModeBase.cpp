@@ -259,6 +259,10 @@ void AIndianPokerGameModeBase::StartRound()
 
 	SetPhaseServer(EGamePhase::Deal);
 
+	// Day12: 이번 라운드 베팅 기여량 초기화 (ApplyAnte보다 먼저!)
+	RoundP1PS->CurrentRoundContribution = 0;
+	RoundP2PS->CurrentRoundContribution = 0;
+
 	GenerateDeck();
 	ShuffleDeck();
 	DealCards();
@@ -431,6 +435,20 @@ void AIndianPokerGameModeBase::InitBettingState()
 	UE_LOG(LogTemp, Warning, TEXT("[InitBettingState] FirstActorPlayerId=%d"), AuthFirstActorPlayerId);
 	UE_LOG(LogTemp, Warning, TEXT("[InitBettingState] CurrentActorPlayerId=%d"), AuthCurrentActorPlayerId);
 
+	// Day12. 테스트로그
+	const int32 P1Required = CalcRequiredToCall(P1->GetPlayerId());
+	const int32 P2Required = CalcRequiredToCall(P2->GetPlayerId());
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("[BetState] P1 Chips=%d Contrib=%d Required=%d | P2 Chips=%d Contrib=%d Required=%d | Pot=%d"),
+		RoundP1PS->Chips,
+		RoundP1PS->CurrentRoundContribution,
+		P1Required,
+		RoundP2PS->Chips,
+		RoundP2PS->CurrentRoundContribution,
+		P2Required,
+		Pot);
+
 	UE_LOG(LogTemp, Warning, TEXT("[Bet] RequiredToCall = %d"), RequiredToCall);
 }
 
@@ -539,12 +557,18 @@ void AIndianPokerGameModeBase::ApplyAnte()
 	P1->Chips -= 1;
 	P2->Chips -= 1;
 
+	// Day12
+	RoundP1PS->CurrentRoundContribution += 1;
+	RoundP2PS->CurrentRoundContribution += 1;
+
 	Pot = 2;
 	RoundBet = 1;
 
 	UE_LOG(LogTemp, Warning, TEXT("[Bet] Ante Applied"));
 	UE_LOG(LogTemp, Warning, TEXT("[Bet] P1 ChipsAfter: %d"), P1->Chips);
 	UE_LOG(LogTemp, Warning, TEXT("[Bet] P2 ChipsAfter: %d"), P2->Chips);
+	UE_LOG(LogTemp, Warning, TEXT("[Bet] P1 Contribution : %d"), P1->CurrentRoundContribution);
+	UE_LOG(LogTemp, Warning, TEXT("[Bet] P2 Contribution : %d"), P2->CurrentRoundContribution);
 	UE_LOG(LogTemp, Warning, TEXT("[Bet] Pot: %d"), Pot);
 	UE_LOG(LogTemp, Warning, TEXT("[Bet] RoundBet: %d"), RoundBet);
 }
@@ -605,6 +629,16 @@ void AIndianPokerGameModeBase::HandlePlayerAction(AIndianPokerPlayerController* 
 	case EBettingActionType::Fold:
 		UE_LOG(LogTemp, Warning, TEXT("[GameMode] Fold branch entered"));
 		HandleAction_Fold(RequestingPS, OpponentPS);
+		break;
+
+	case EBettingActionType::Call:
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] Call branch entered"));
+		HandleAction_Call(RequestingPS, OpponentPS);
+		break;
+
+	case EBettingActionType::Raise:
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] Raise branch entered"));
+		HandleAction_Raise(RequestingPS, OpponentPS, RaiseExtra);
 		break;
 
 	default:
@@ -916,6 +950,149 @@ bool AIndianPokerGameModeBase::HandleAction_Fold(
 	return true;
 }
 
+// Day12 Call / Raise
+bool AIndianPokerGameModeBase::HandleAction_Call(
+	AIndianPokerPlayerState* RequestingPS,
+	AIndianPokerPlayerState* OpponentPS)
+{
+	if (!RequestingPS || !OpponentPS)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Call] Failed - RequestingPS or OpponentPS is null"));
+		return false;
+	}
+
+	const int32 RequestingId = RequestingPS->GetPlayerId();
+	const int32 RequiredAmount = CalcRequiredToCall(RequestingId);
+
+	if (RequiredAmount <= 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Call] Failed - RequiredToCall must be > 0. RequiredToCall=%d"),
+			RequiredAmount);
+		return false;
+	}
+
+	if (RequestingPS->Chips < RequiredAmount)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Call] Failed - Not enough chips. Chips=%d Required=%d"),
+			RequestingPS->Chips,
+			RequiredAmount);
+		return false;
+	}
+
+	RequestingPS->Chips -= RequiredAmount;
+	RequestingPS->CurrentRoundContribution += RequiredAmount;
+	Pot += RequiredAmount;
+
+	SyncRoundStateToGameState();
+
+	UE_LOG(LogTemp, Warning, TEXT("[Call] Success - PlayerId=%d called for %d"), RequestingId, RequiredAmount);
+	UE_LOG(LogTemp, Warning, TEXT("[Call] RequestingPS Chips=%d Contribution=%d"),
+		RequestingPS->Chips,
+		RequestingPS->CurrentRoundContribution);
+	UE_LOG(LogTemp, Warning, TEXT("[Call] OpponentPS Chips=%d Contribution=%d"),
+		OpponentPS->Chips,
+		OpponentPS->CurrentRoundContribution);
+	UE_LOG(LogTemp, Warning, TEXT("[Call] Pot=%d RoundBet=%d"), Pot, RoundBet);
+
+	const int32 RequestingRequiredAfter = CalcRequiredToCall(RequestingPS->GetPlayerId());
+	const int32 OpponentRequiredAfter = CalcRequiredToCall(OpponentPS->GetPlayerId());
+
+	UE_LOG(LogTemp, Warning, TEXT("[Call] After Update - Requesting RequiredToCall=%d Opponent RequiredToCall=%d"),
+		RequestingRequiredAfter,
+		OpponentRequiredAfter);
+
+	SetPhaseServer(EGamePhase::Showdown);
+
+	UE_LOG(LogTemp, Warning, TEXT("[Call] Enter Showdown"));
+
+	return true;
+}
+
+bool AIndianPokerGameModeBase::HandleAction_Raise(
+	AIndianPokerPlayerState* RequestingPS,
+	AIndianPokerPlayerState* OpponentPS,
+	int32 RaiseExtra)
+{
+	if (!RequestingPS || !OpponentPS)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Raise] Failed - RequestingPS or OpponentPS is null"));
+		return false;
+	}
+
+	const int32 RequestingId = RequestingPS->GetPlayerId();
+	const int32 RequiredAmount = CalcRequiredToCall(RequestingId);
+	const int32 TotalPay = RequiredAmount + RaiseExtra;
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("[Raise] Attempt - PlayerId=%d MyContrib=%d OppContrib=%d RequiredToCall=%d RaiseExtra=%d TotalPay=%d Chips=%d"),
+		RequestingId,
+		RequestingPS->CurrentRoundContribution,
+		OpponentPS->CurrentRoundContribution,
+		RequiredAmount,
+		RaiseExtra,
+		TotalPay,
+		RequestingPS->Chips);
+
+	if (RaiseExtra < 1)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Raise] Failed - RaiseExtra must be >= 1. RaiseExtra=%d"), RaiseExtra);
+		return false;
+	}
+
+	if (RequestingPS->Chips < TotalPay)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Raise] Failed - Not enough chips. Chips=%d TotalPay=%d"),
+			RequestingPS->Chips,
+			TotalPay);
+		return false;
+	}
+
+	const int32 MyNewContribution = RequestingPS->CurrentRoundContribution + TotalPay;
+	const int32 OpponentRequiredAfterRaise = MyNewContribution - OpponentPS->CurrentRoundContribution;
+
+	if (OpponentPS->Chips < OpponentRequiredAfterRaise)
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("[Raise] Failed - Opponent cannot respond. OpponentChips=%d RequiredAfterRaise=%d"),
+			OpponentPS->Chips,
+			OpponentRequiredAfterRaise);
+		return false;
+	}
+
+	RequestingPS->Chips -= TotalPay;
+	RequestingPS->CurrentRoundContribution += TotalPay;
+	Pot += TotalPay;
+
+	AuthCurrentActorPlayerId = OpponentPS->GetPlayerId();
+
+	SyncRoundStateToGameState();
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("[Raise] Success - PlayerId=%d Paid=%d | Chips=%d | Contribution=%d | Pot=%d"),
+		RequestingId,
+		TotalPay,
+		RequestingPS->Chips,
+		RequestingPS->CurrentRoundContribution,
+		Pot);
+
+	UE_LOG(LogTemp, Warning, TEXT("[Raise] Turn passed to PlayerId=%d"), AuthCurrentActorPlayerId);
+
+	const int32 RequestingRequiredAfter = CalcRequiredToCall(RequestingPS->GetPlayerId());
+	const int32 OpponentRequiredAfter = CalcRequiredToCall(OpponentPS->GetPlayerId());
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("[BetState][After Raise] Req Chips=%d Contrib=%d Required=%d | Opp Chips=%d Contrib=%d Required=%d | Pot=%d"),
+		RequestingPS->Chips,
+		RequestingPS->CurrentRoundContribution,
+		RequestingRequiredAfter,
+		OpponentPS->Chips,
+		OpponentPS->CurrentRoundContribution,
+		OpponentRequiredAfter,
+		Pot);
+
+	return true;
+}
+
 void AIndianPokerGameModeBase::ResolveFoldRound(
 	AIndianPokerPlayerState* FolderPS,
 	AIndianPokerPlayerState* WinnerPS)
@@ -1114,4 +1291,60 @@ bool AIndianPokerGameModeBase::GetCachedRoundPlayers(
 	OutP1 = RoundP1PS;
 	OutP2 = RoundP2PS;
 	return (OutP1 && OutP2);
+}
+
+AIndianPokerPlayerState* AIndianPokerGameModeBase::GetPlayerStateByPlayerId(int32 PlayerId) const
+{
+	if (RoundP1PS && RoundP1PS->GetPlayerId() == PlayerId)
+	{
+		return RoundP1PS;
+	}
+
+	if (RoundP2PS && RoundP2PS->GetPlayerId() == PlayerId)
+	{
+		return RoundP2PS;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[GetPlayerStateByPlayerId] No match for PlayerId=%d"), PlayerId);
+	return nullptr;
+}
+
+AIndianPokerPlayerState* AIndianPokerGameModeBase::GetOpponentPlayerStateByPlayerId(int32 PlayerId) const
+{
+	if (RoundP1PS && RoundP1PS->GetPlayerId() == PlayerId)
+	{
+		return RoundP2PS;
+	}
+
+	if (RoundP2PS && RoundP2PS->GetPlayerId() == PlayerId)
+	{
+		return RoundP1PS;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[GetOpponentPlayerStateByPlayerId] No opponent match for PlayerId=%d"), PlayerId);
+	return nullptr;
+}
+
+int32 AIndianPokerGameModeBase::CalcRequiredToCall(int32 RequestPlayerId) const
+{
+	AIndianPokerPlayerState* MyPS = GetPlayerStateByPlayerId(RequestPlayerId);
+	AIndianPokerPlayerState* OpponentPS = GetOpponentPlayerStateByPlayerId(RequestPlayerId);
+
+	if (!MyPS || !OpponentPS)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[CalcRequiredToCall] Invalid PlayerState for PlayerId=%d"), RequestPlayerId);
+		return 0;
+	}
+
+	const int32 RawRequired = OpponentPS->CurrentRoundContribution - MyPS->CurrentRoundContribution;
+	const int32 FinalRequired = FMath::Max(0, RawRequired);
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("[CalcRequiredToCall] RequestPlayerId=%d | MyContrib=%d | OppContrib=%d | Required=%d"),
+		RequestPlayerId,
+		MyPS->CurrentRoundContribution,
+		OpponentPS->CurrentRoundContribution,
+		FinalRequired);
+
+	return FinalRequired;
 }

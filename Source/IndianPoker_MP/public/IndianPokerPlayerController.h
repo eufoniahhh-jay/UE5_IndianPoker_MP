@@ -97,6 +97,11 @@ public:
 	void RequestCheck();
 	void RequestCheckCall();
 	void RequestFold();
+	// Day12. 
+	void RequestCall();
+	void RequestRaise1();
+	void RequestRaise2();
+	void RequestRaise3();
 
 	UPROPERTY(EditDefaultsOnly, Category = "Input|Betting")
 	UInputAction* IA_Check;
@@ -106,4 +111,16 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Input|Betting")
 	UInputAction* IA_Fold;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Input|Betting")
+	UInputAction* IA_Call;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Input|Betting")
+	UInputAction* IA_Raise1;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Input|Betting")
+	UInputAction* IA_Raise2;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Input|Betting")
+	UInputAction* IA_Raise3;
 };

@@ -216,6 +216,19 @@ void AIndianPokerPlayerController::SetupInputComponent()
 
 	if (IA_Fold)
 		EIC->BindAction(IA_Fold, ETriggerEvent::Started, this, &AIndianPokerPlayerController::RequestFold);
+
+	// Day12. Call / Raise
+	if (IA_Call)
+		EIC->BindAction(IA_Call, ETriggerEvent::Started, this, &AIndianPokerPlayerController::RequestCall);
+
+	if (IA_Raise1)
+		EIC->BindAction(IA_Raise1, ETriggerEvent::Started, this, &AIndianPokerPlayerController::RequestRaise1);
+
+	if (IA_Raise2)
+		EIC->BindAction(IA_Raise2, ETriggerEvent::Started, this, &AIndianPokerPlayerController::RequestRaise2);
+
+	if (IA_Raise3)
+		EIC->BindAction(IA_Raise3, ETriggerEvent::Started, this, &AIndianPokerPlayerController::RequestRaise3);
 }
 
 // RMB 누를 때만 Look 구현. 
@@ -407,4 +420,24 @@ void AIndianPokerPlayerController::RequestCheckCall()
 void AIndianPokerPlayerController::RequestFold()
 {
 	Server_RequestAction(EBettingActionType::Fold, 0);
+}
+
+void AIndianPokerPlayerController::RequestCall()
+{
+	Server_RequestAction(EBettingActionType::Call, 0);
+}
+
+void AIndianPokerPlayerController::RequestRaise1()
+{
+	Server_RequestAction(EBettingActionType::Raise, 1);
+}
+
+void AIndianPokerPlayerController::RequestRaise2()
+{
+	Server_RequestAction(EBettingActionType::Raise, 2);
+}
+
+void AIndianPokerPlayerController::RequestRaise3()
+{
+	Server_RequestAction(EBettingActionType::Raise, 3);
 }

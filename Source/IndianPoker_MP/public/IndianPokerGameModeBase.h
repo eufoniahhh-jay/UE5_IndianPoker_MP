@@ -50,6 +50,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Round")
 	void StartRound();
 
+	// Day13. 선공 선택용 변수 (선공은 매 라운드 번갈아가며)
+	bool bNextRoundStartsWithP1 = true;
+
 protected:
 	// Day9
 	// 라운드 흐름 함수
@@ -162,6 +165,15 @@ public:
 		AIndianPokerPlayerState* WinnerPS
 	);
 
+	// Day13. Showdown 결과 처리 함수
+	void ResolveShowdown();
+
+	// Day13. 라운드 종료 공통 처리 함수 (전체흐름제어/종료판정담당/종료처리담당) 3가지
+	void AdvanceAfterRound();
+	bool IsMatchEnded() const;
+	void HandleMatchEnd();
+	FTimerHandle NextRoundTimerHandle;
+
 public:
 	// Day11. 누구인지 기억하는 건 ID, 실제 상태가 필요할 때만 헬퍼로 PlayerState를 찾는다
 	// 헬퍼 함수
@@ -171,6 +183,9 @@ public:
 	) const;
 
 	AIndianPokerPlayerState* FindRoundPlayerStateById(int32 PlayerId) const;
+
+	// 시작시 최초 참가자 캐시하기(tryStartRound 내에서 한 번만)
+	bool EnsureMatchPlayersCached();
 
 	// 라운드 시작시 참가자 캐시하기
 	bool GetCachedRoundPlayers(

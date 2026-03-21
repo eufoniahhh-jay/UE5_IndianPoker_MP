@@ -191,6 +191,10 @@ void AIndianPokerGameModeBase::SyncRoundStateToGameState()
 	GS->SetFirstActorPlayerIdServer(AuthFirstActorPlayerId);
 	GS->SetCurrentActorPlayerIdServer(AuthCurrentActorPlayerId);
 
+	// Day14
+	GS->SetCurrentRoundNumberServer(CurrentRoundNumber);
+	GS->SetLastActionTextServer(LastActionText);
+
 	UE_LOG(LogTemp, Warning, TEXT("[GameMode] Sync FirstActorPlayerId=%d"), AuthFirstActorPlayerId);
 	UE_LOG(LogTemp, Warning, TEXT("[GameMode] Sync CurrentActorPlayerId=%d"), AuthCurrentActorPlayerId);
 	UE_LOG(LogTemp, Warning, TEXT("[GameMode] Round state synced to GameState"));
@@ -235,6 +239,9 @@ void AIndianPokerGameModeBase::TryStartRound()
 void AIndianPokerGameModeBase::StartRound()
 {
 	UE_LOG(LogTemp, Warning, TEXT("[Round] New Round Start"));
+
+	CurrentRoundNumber++;
+	LastActionText = FString::Printf(TEXT("Round %d Start"), CurrentRoundNumber);
 
 	/*Pot = 2;
 	RoundBet = 1;*/
@@ -924,6 +931,10 @@ bool AIndianPokerGameModeBase::HandleAction_Check(
 	UE_LOG(LogTemp, Warning, TEXT("[CheckDebug] After Assign CurrentActorPlayerId=%d"), AuthCurrentActorPlayerId);
 
 	UE_LOG(LogTemp, Warning, TEXT("[CheckDebug] Before Sync CurrentActorPlayerId=%d"), AuthCurrentActorPlayerId);
+
+	// Day14
+	LastActionText = FString::Printf(TEXT("Player %d Checked"), RequestingPS->GetPlayerId());
+
 	SyncRoundStateToGameState();
 
 
@@ -973,6 +984,10 @@ bool AIndianPokerGameModeBase::HandleAction_CheckCall(
 
 	// Day13. 베팅 종료 후 AuthCurrentActorPlayerId 정리. 
 	AuthCurrentActorPlayerId = INDEX_NONE;
+
+	// Day14. HUD
+	LastActionText = FString::Printf(TEXT("Player %d Check-Called"), RequestingPS->GetPlayerId());
+
 	SyncRoundStateToGameState();
 
 	SetPhaseServer(EGamePhase::Showdown);
@@ -1047,6 +1062,13 @@ bool AIndianPokerGameModeBase::HandleAction_Call(
 
 	// Day13. 베팅 종료 후 AuthCurrentActorPlayerId 정리. 
 	AuthCurrentActorPlayerId = INDEX_NONE;
+
+	// Day14. HUD
+	LastActionText = FString::Printf(
+		TEXT("Player %d Called %d"),
+		RequestingPS->GetPlayerId(),
+		RequiredAmount
+	);
 
 	SyncRoundStateToGameState();
 
@@ -1131,6 +1153,13 @@ bool AIndianPokerGameModeBase::HandleAction_Raise(
 
 	AuthCurrentActorPlayerId = OpponentPS->GetPlayerId();
 
+	// Day14. HUD
+	LastActionText = FString::Printf(
+		TEXT("Player %d Raised +%d"),
+		RequestingPS->GetPlayerId(),
+		RaiseExtra
+	);
+
 	SyncRoundStateToGameState();
 
 	UE_LOG(LogTemp, Warning,
@@ -1195,6 +1224,14 @@ void AIndianPokerGameModeBase::ResolveFoldRound(
 	SetPhaseServer(EGamePhase::RoundResult);
 
 	UE_LOG(LogTemp, Warning, TEXT("[FoldResolve] Round Ended by Fold"));
+
+	// Day14.
+	LastActionText = FString::Printf(
+		TEXT("Player %d Folded - Player %d Wins"),
+		FolderPS->GetPlayerId(),
+		WinnerPS->GetPlayerId()
+	);
+
 	UE_LOG(LogTemp, Warning, TEXT("[FoldResolve] Winner=%s Ptr=%p Id=%d ChipsBefore=%d"),
 		*GetNameSafe(WinnerPS), WinnerPS,
 		WinnerPS ? WinnerPS->GetPlayerId() : -1,
@@ -1267,6 +1304,7 @@ void AIndianPokerGameModeBase::ResolveShowdown()
 
 		UE_LOG(LogTemp, Warning, TEXT("[Showdown] Winner=P1 Id=%d Awarded Pot=%d"), P1->GetPlayerId(), Pot);
 		UE_LOG(LogTemp, Warning, TEXT("[Showdown] P1 Chips=%d | P2 Chips=%d"), P1->Chips, P2->Chips);
+		LastActionText = FString::Printf(TEXT("Showdown - Player %d Wins"), P1->GetPlayerId());
 
 		Pot = 0;
 	}
@@ -1276,6 +1314,7 @@ void AIndianPokerGameModeBase::ResolveShowdown()
 
 		UE_LOG(LogTemp, Warning, TEXT("[Showdown] Winner=P2 Id=%d Awarded Pot=%d"), P2->GetPlayerId(), Pot);
 		UE_LOG(LogTemp, Warning, TEXT("[Showdown] P1 Chips=%d | P2 Chips=%d"), P1->Chips, P2->Chips);
+		LastActionText = FString::Printf(TEXT("Showdown - Player %d Wins"), P2->GetPlayerId());
 
 		Pot = 0;
 	}
@@ -1283,7 +1322,11 @@ void AIndianPokerGameModeBase::ResolveShowdown()
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Showdown] Draw - Pot carries over. Pot=%d"), Pot);
 		UE_LOG(LogTemp, Warning, TEXT("[Showdown] P1 Chips=%d | P2 Chips=%d"), P1->Chips, P2->Chips);
+		LastActionText = TEXT("Showdown - Draw");
 	}
+
+	// Day14. Showdown에서 Pot이 0으로 바뀌어도 그 직후 동기화가 없어서 HUD 반영이 늦을 수 있어서 넣어줌
+	SyncRoundStateToGameState();
 
 	AdvanceAfterRound();
 }
@@ -1371,6 +1414,9 @@ void AIndianPokerGameModeBase::HandleMatchEnd()
 		UE_LOG(LogTemp, Warning, TEXT("[MatchEnd] Failed - P1 or P2 is null"));
 		return;
 	}
+
+	const int32 WinnerId = (P1->Chips > P2->Chips) ? P1->GetPlayerId() : P2->GetPlayerId();
+	LastActionText = FString::Printf(TEXT("Match End - Player %d Wins"), WinnerId);
 
 	AuthCurrentActorPlayerId = INDEX_NONE;
 	SyncRoundStateToGameState();

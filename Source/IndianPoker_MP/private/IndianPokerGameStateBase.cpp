@@ -95,6 +95,28 @@ void AIndianPokerGameStateBase::SetFirstActorPlayerIdServer(int32 NewPlayerId)
 	UE_LOG(LogTemp, Warning, TEXT("[GameState][Server] FirstActorPlayerId set to %d"), FirstActorPlayerId);
 }
 
+void AIndianPokerGameStateBase::SetCurrentRoundNumberServer(int32 NewRoundNumber)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	CurrentRoundNumber = NewRoundNumber;
+	UE_LOG(LogTemp, Warning, TEXT("[GameState][Server] CurrentRoundNumber set to %d"), CurrentRoundNumber);
+}
+
+void AIndianPokerGameStateBase::SetLastActionTextServer(const FString& NewLastActionText)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	LastActionText = NewLastActionText;
+	UE_LOG(LogTemp, Warning, TEXT("[GameState][Server] LastActionText set to %s"), *LastActionText);
+}
+
 void AIndianPokerGameStateBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
@@ -106,6 +128,9 @@ void AIndianPokerGameStateBase::GetLifetimeReplicatedProps(TArray<FLifetimePrope
 	DOREPLIFETIME(AIndianPokerGameStateBase, RoundBet);
 	DOREPLIFETIME(AIndianPokerGameStateBase, CurrentActorPlayerId);
 	DOREPLIFETIME(AIndianPokerGameStateBase, FirstActorPlayerId);
+	// Day14
+	DOREPLIFETIME(AIndianPokerGameStateBase, CurrentRoundNumber);
+	DOREPLIFETIME(AIndianPokerGameStateBase, LastActionText);
 }
 
 void AIndianPokerGameStateBase::OnRep_CurrentPhase()
@@ -132,4 +157,14 @@ void AIndianPokerGameStateBase::OnRep_CurrentActorPlayerId()
 void AIndianPokerGameStateBase::OnRep_FirstActorPlayerId()
 {
 	UE_LOG(LogTemp, Warning, TEXT("[GameState][Client] OnRep_FirstActorPlayerId -> %d"), FirstActorPlayerId);
+}
+
+void AIndianPokerGameStateBase::OnRep_CurrentRoundNumber()
+{
+	UE_LOG(LogTemp, Warning, TEXT("[GameState][Client] OnRep_CurrentRoundNumber -> %d"), CurrentRoundNumber);
+}
+
+void AIndianPokerGameStateBase::OnRep_LastActionText()
+{
+	UE_LOG(LogTemp, Warning, TEXT("[GameState][Client] OnRep_LastActionText -> %s"), *LastActionText);
 }

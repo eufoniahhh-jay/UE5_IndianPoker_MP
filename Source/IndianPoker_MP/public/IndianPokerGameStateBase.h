@@ -45,6 +45,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Round")
 	int32 GetFirstActorPlayerId() const { return FirstActorPlayerId; }
 
+	// Day14. HUD
+	UFUNCTION(BlueprintCallable, Category = "Round")
+	int32 GetCurrentRoundNumber() const { return CurrentRoundNumber; }
+
+	UFUNCTION(BlueprintCallable, Category = "Round")
+	const FString& GetLastActionText() const { return LastActionText; }
+
 	// 서버에서만 호출되도록 (실제 호출은 GameMode에서 할 것)
 	void SetPhaseServer(EGamePhase NewPhase);
 	// Day9
@@ -52,6 +59,10 @@ public:
 	void SetRoundBetServer(int32 NewRoundBet);
 	void SetCurrentActorPlayerIdServer(int32 NewPlayerId);
 	void SetFirstActorPlayerIdServer(int32 NewPlayerId);
+
+	// Day14. HUD
+	void SetCurrentRoundNumberServer(int32 NewRoundNumber);
+	void SetLastActionTextServer(const FString& NewLastActionText);
 
 protected:
 	virtual void BeginPlay() override;
@@ -80,6 +91,13 @@ protected:
 	UPROPERTY(ReplicatedUsing = OnRep_FirstActorPlayerId, BlueprintReadOnly, Category = "Round")
 	int32 FirstActorPlayerId = -1;
 
+	// Day14. HUD 표시용 변수
+	UPROPERTY(ReplicatedUsing = OnRep_CurrentRoundNumber, BlueprintReadOnly, Category = "Round")
+	int32 CurrentRoundNumber = 0;
+
+	UPROPERTY(ReplicatedUsing = OnRep_LastActionText, BlueprintReadOnly, Category = "Round")
+	FString LastActionText = TEXT("");
+
 	UFUNCTION()
 	void OnRep_CurrentPhase();
 	// Day9
@@ -94,4 +112,11 @@ protected:
 
 	UFUNCTION()
 	void OnRep_FirstActorPlayerId();
+
+	UFUNCTION()
+	void OnRep_CurrentRoundNumber();
+
+	UFUNCTION()
+	void OnRep_LastActionText();
+
 };

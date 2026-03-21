@@ -94,6 +94,13 @@ protected:
 	UPROPERTY()
 	int32 RequiredToCall = 0;
 
+	// Day14. HUD
+	UPROPERTY()
+	int32 CurrentRoundNumber = 0;
+
+	UPROPERTY()
+	FString LastActionText = TEXT("");
+
 	// 지금은 단순히 포인터로 시작(Day9)
 	/*UPROPERTY()
 	AIndianPokerPlayerState* FirstActorPS = nullptr;
@@ -114,7 +121,7 @@ protected:
 	TObjectPtr<AIndianPokerPlayerState> RoundP1PS = nullptr;
 
 	UPROPERTY()
-	TObjectPtr<AIndianPokerPlayerState> RoundP2PS = nullptr;
+	TObjectPtr<AIndianPokerPlayerState> RoundP2PS = nullptr; 
 
 public:
 	// Day10. 

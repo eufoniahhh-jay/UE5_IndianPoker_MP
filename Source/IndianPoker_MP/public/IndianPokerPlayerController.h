@@ -6,6 +6,7 @@
 #include "GameFramework/PlayerController.h"
 #include "InputActionValue.h"
 #include "BettingTypes.h"
+#include "Blueprint/UserWidget.h"
 #include "IndianPokerPlayerController.generated.h"
 
 /**
@@ -14,6 +15,7 @@
 
 class UInputMappingContext;
 class UInputAction;
+class UUserWidget;
 
 UCLASS()
 class INDIANPOKER_MP_API AIndianPokerPlayerController : public APlayerController
@@ -123,4 +125,12 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Input|Betting")
 	UInputAction* IA_Raise3;
+
+public:
+	// Day14. 로컬 플레이어만 HUD 띄우기
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI")
+	TSubclassOf<UUserWidget> MatchHUDClass;
+
+	UPROPERTY()
+	UUserWidget* MatchHUDWidget;
 };

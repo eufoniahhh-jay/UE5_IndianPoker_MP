@@ -131,6 +131,25 @@ void AIndianPokerPlayerController::BeginPlay()
 			UE_LOG(LogTemp, Warning, TEXT("[PC] LobbyMap on Client -> Skip TryCreateSessionAfterLobbyOpened"));
 		}
 	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[PC] Try Create MatchHUD | IsLocal=%d | Class=%s"),
+		bLocal ? 1 : 0,
+		*GetNameSafe(MatchHUDClass));
+
+	// Day14. MatchHUD 띄우기
+	if (bLocal && MatchHUDClass && !MatchHUDWidget && CleanMapName.Contains(TEXT("GameMap")))
+	{
+		MatchHUDWidget = CreateWidget<UUserWidget>(this, MatchHUDClass);
+		if (MatchHUDWidget)
+		{
+			MatchHUDWidget->AddToViewport();
+			UE_LOG(LogTemp, Warning, TEXT("[PC] MatchHUD created and added to viewport"));
+		}
+	}
+	else 
+	{
+		UE_LOG(LogTemp, Error, TEXT("[PC] MatchHUD creation failed"));
+	}
 }
 
 //void AIndianPokerPlayerController::SetupInputComponent()
@@ -158,7 +177,7 @@ void AIndianPokerPlayerController::Input_AdvancePhase()
 		return;
 	}
 
-	GM->AdvancePhaseServer();
+	GM->AdvancePhaseServer(); 
 }
 
 // IA 바인딩

@@ -446,6 +446,11 @@ void AIndianPokerPlayerController::RequestCall()
 	Server_RequestAction(EBettingActionType::Call, 0);
 }
 
+void AIndianPokerPlayerController::RequestRaise(int32 InRaiseExtra)
+{
+	Server_RequestAction(EBettingActionType::Raise, InRaiseExtra);
+}
+
 void AIndianPokerPlayerController::RequestRaise1()
 {
 	Server_RequestAction(EBettingActionType::Raise, 1);

@@ -119,4 +119,17 @@ protected:
 	UFUNCTION()
 	void OnRep_LastActionText();
 
+	// Day15. HUD 버튼 연결용 (체크 콜 버튼 숨기기/나타내기 위함)
+public:
+	UFUNCTION(BlueprintCallable, Category = "Round")
+	bool GetHasOpeningCheck() const { return bHasOpeningCheck; }
+
+	void SetHasOpeningCheckServer(bool bNewHasOpeningCheck);
+
+protected:
+	UPROPERTY(ReplicatedUsing = OnRep_HasOpeningCheck, BlueprintReadOnly, Category = "Round")
+	bool bHasOpeningCheck = false;
+
+	UFUNCTION()
+	void OnRep_HasOpeningCheck();
 };

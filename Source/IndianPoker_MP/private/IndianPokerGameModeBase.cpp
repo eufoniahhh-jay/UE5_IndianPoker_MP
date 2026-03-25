@@ -198,6 +198,9 @@ void AIndianPokerGameModeBase::SyncRoundStateToGameState()
 	UE_LOG(LogTemp, Warning, TEXT("[GameMode] Sync FirstActorPlayerId=%d"), AuthFirstActorPlayerId);
 	UE_LOG(LogTemp, Warning, TEXT("[GameMode] Sync CurrentActorPlayerId=%d"), AuthCurrentActorPlayerId);
 	UE_LOG(LogTemp, Warning, TEXT("[GameMode] Round state synced to GameState"));
+
+	// Day15
+	GS->SetHasOpeningCheckServer(bHasOpeningCheck);
 }
 
 bool AIndianPokerGameModeBase::CanStartRound()

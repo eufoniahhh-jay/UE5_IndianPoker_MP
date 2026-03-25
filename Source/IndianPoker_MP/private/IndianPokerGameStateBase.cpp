@@ -131,6 +131,8 @@ void AIndianPokerGameStateBase::GetLifetimeReplicatedProps(TArray<FLifetimePrope
 	// Day14
 	DOREPLIFETIME(AIndianPokerGameStateBase, CurrentRoundNumber);
 	DOREPLIFETIME(AIndianPokerGameStateBase, LastActionText);
+	// Day15.
+	DOREPLIFETIME(AIndianPokerGameStateBase, bHasOpeningCheck);
 }
 
 void AIndianPokerGameStateBase::OnRep_CurrentPhase()
@@ -167,4 +169,22 @@ void AIndianPokerGameStateBase::OnRep_CurrentRoundNumber()
 void AIndianPokerGameStateBase::OnRep_LastActionText()
 {
 	UE_LOG(LogTemp, Warning, TEXT("[GameState][Client] OnRep_LastActionText -> %s"), *LastActionText);
+}
+
+void AIndianPokerGameStateBase::SetHasOpeningCheckServer(bool bNewHasOpeningCheck)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	bHasOpeningCheck = bNewHasOpeningCheck;
+	UE_LOG(LogTemp, Warning, TEXT("[GameState][Server] bHasOpeningCheck set to %s"),
+		bHasOpeningCheck ? TEXT("true") : TEXT("false"));
+}
+
+void AIndianPokerGameStateBase::OnRep_HasOpeningCheck()
+{
+	UE_LOG(LogTemp, Warning, TEXT("[GameState][Client] OnRep_HasOpeningCheck -> %s"),
+		bHasOpeningCheck ? TEXT("true") : TEXT("false"));
 }

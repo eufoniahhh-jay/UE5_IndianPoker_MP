@@ -96,11 +96,17 @@ public:
 	UFUNCTION(Server, Reliable)
 	void Server_RequestAction(EBettingActionType ActionType, int32 RaiseExtra);
 
+	UFUNCTION(BlueprintCallable, Category = "IndianPoker|Betting")
 	void RequestCheck();
+	UFUNCTION(BlueprintCallable, Category = "IndianPoker|Betting")
 	void RequestCheckCall();
+	UFUNCTION(BlueprintCallable, Category = "IndianPoker|Betting")
 	void RequestFold();
 	// Day12. 
+	UFUNCTION(BlueprintCallable, Category = "IndianPoker|Betting")
 	void RequestCall();
+	UFUNCTION(BlueprintCallable, Category = "IndianPoker|Betting")
+	void RequestRaise(int32 InRaiseExtra);
 	void RequestRaise1();
 	void RequestRaise2();
 	void RequestRaise3();

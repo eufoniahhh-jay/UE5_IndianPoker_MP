@@ -2,6 +2,7 @@
 
 
 #include "CardActor.h"
+#include "Net/UnrealNetwork.h"
 
 // Sets default values
 ACardActor::ACardActor()
@@ -26,4 +27,34 @@ void ACardActor::BeginPlay()
 	
 }
 
+void ACardActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(ACardActor, CurrentCardValue);
+}
+
+void ACardActor::SetCardValueServer(int32 InCardValue)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	CurrentCardValue = InCardValue;
+
+	UE_LOG(LogTemp, Warning, TEXT("[CardActor] SetCardValueServer | %s | Value=%d"),
+		*GetName(), CurrentCardValue);
+
+	// 서버도 자기 화면에서 즉시 갱신해야 하므로 직접 호출
+	BP_OnCardValueChanged(CurrentCardValue);
+}
+
+void ACardActor::OnRep_CurrentCardValue()
+{
+	UE_LOG(LogTemp, Warning, TEXT("[CardActor] OnRep_CurrentCardValue | %s | Value=%d"),
+		*GetName(), CurrentCardValue);
+
+	BP_OnCardValueChanged(CurrentCardValue);
+}
 

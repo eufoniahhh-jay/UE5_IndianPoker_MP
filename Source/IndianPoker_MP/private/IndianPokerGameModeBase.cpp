@@ -10,6 +10,8 @@
 #include "GameFramework/PlayerState.h"
 #include "Engine/World.h"
 #include "Algo/RandomShuffle.h"
+#include "CardActor.h"
+#include "Kismet/GameplayStatics.h"
 
 AIndianPokerGameModeBase::AIndianPokerGameModeBase()
 {
@@ -46,6 +48,9 @@ void AIndianPokerGameModeBase::BeginPlay()
 			false
 		);
 	}
+
+	// Day16. 카드 액터 캐싱
+	CacheWorldCardActors();
 }
 
 void AIndianPokerGameModeBase::DelayedTryStartRound()
@@ -305,6 +310,9 @@ void AIndianPokerGameModeBase::StartRound()
 	InitBettingState();				// SyncRoundStateToGameState 이전에 실행
 
 	SyncRoundStateToGameState();
+
+	// Day16. 카드 분배가 끝난 직후, 실제 월드 카드 갱신
+	UpdateWorldCardVisuals();
 
 	SetPhaseServer(EGamePhase::Betting);
 
@@ -1658,4 +1666,99 @@ int32 AIndianPokerGameModeBase::CalcRequiredToCall(int32 RequestPlayerId) const
 		FinalRequired);
 
 	return FinalRequired;
+}
+
+void AIndianPokerGameModeBase::CacheWorldCardActors()
+{
+	UE_LOG(LogTemp, Warning, TEXT("[Card] CacheWorldCardActors called."));
+
+	P1WorldCard = nullptr;
+	P2WorldCard = nullptr;
+
+	TArray<AActor*> FoundCards;
+	UGameplayStatics::GetAllActorsOfClass(GetWorld(), ACardActor::StaticClass(), FoundCards);
+
+	UE_LOG(LogTemp, Warning, TEXT("[Card] Found %d card actors in world."), FoundCards.Num());
+
+	for (AActor* Actor : FoundCards)
+	{
+		ACardActor* Card = Cast<ACardActor>(Actor);
+		if (!Card)
+		{
+			continue;
+		}
+
+		UE_LOG(LogTemp, Warning, TEXT("[Card] Inspecting %s | CardSlotId=%d"),
+			*Card->GetName(), Card->CardSlotId);
+
+		if (Card->CardSlotId == 0)
+		{
+			P1WorldCard = Card;
+			UE_LOG(LogTemp, Warning, TEXT("[Card] Cached P1WorldCard: %s"), *Card->GetName());
+		}
+		else if (Card->CardSlotId == 1)
+		{
+			P2WorldCard = Card;
+			UE_LOG(LogTemp, Warning, TEXT("[Card] Cached P2WorldCard: %s"), *Card->GetName());
+		}
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[Card] Cache result | P1=%s | P2=%s"),
+		P1WorldCard ? *P1WorldCard->GetName() : TEXT("Null"),
+		P2WorldCard ? *P2WorldCard->GetName() : TEXT("Null"));
+
+	if (!P1WorldCard || !P2WorldCard)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Card] Failed to cache one or more world cards."));
+	}
+}
+
+UTexture2D* AIndianPokerGameModeBase::GetFrontTextureForCardValue(int32 CardValue) const
+{
+	const int32 Index = CardValue - 1;
+
+	if (!CardFrontTextures.IsValidIndex(Index))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Card] Invalid card value for texture lookup: %d"), CardValue);
+		return nullptr;
+	}
+
+	return CardFrontTextures[Index];
+}
+
+void AIndianPokerGameModeBase::UpdateWorldCardVisuals()
+{
+	if (!RoundP1PS || !RoundP2PS)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Card] Round player states are invalid."));
+		return;
+	}
+
+	if (!P1WorldCard || !P2WorldCard)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Card] World card actors are not cached."));
+		return;
+	}
+
+	const int32 P1CardValue = RoundP1PS->HiddenCardValue;
+	const int32 P2CardValue = RoundP2PS->HiddenCardValue;
+
+	/*UTexture2D* P1FrontTexture = GetFrontTextureForCardValue(P1CardValue);
+	UTexture2D* P2FrontTexture = GetFrontTextureForCardValue(P2CardValue);
+
+	if (P1FrontTexture)
+	{
+		P1WorldCard->BP_SetCardFrontOnly(P1FrontTexture);
+	}
+
+	if (P2FrontTexture)
+	{
+		P2WorldCard->BP_SetCardFrontOnly(P2FrontTexture);
+	}*/
+
+	// GameMode는 더 이상 텍스처를 직접 넘길 필요가 없으므로 이렇게 변경
+	P1WorldCard->SetCardValueServer(P1CardValue);
+	P2WorldCard->SetCardValueServer(P2CardValue);
+
+	UE_LOG(LogTemp, Warning, TEXT("[Card] Updated world card visuals | P1=%d, P2=%d"), P1CardValue, P2CardValue);
 }

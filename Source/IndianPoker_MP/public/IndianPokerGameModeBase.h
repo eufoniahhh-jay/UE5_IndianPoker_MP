@@ -11,6 +11,7 @@
 class AIndianPokerGameStateBase;
 class AIndianPokerPlayerState;
 class AIndianPokerPlayerController;
+class ACardActor;
 
 // GamePhase enum을 GameState 헤더에 정의할 예정이므로,
 // 여기서는 GameState 헤더 include를 cpp에서 하고 forward 선언만 둠.
@@ -206,4 +207,27 @@ protected:
 	AIndianPokerPlayerState* GetPlayerStateByPlayerId(int32 PlayerId) const;
 	AIndianPokerPlayerState* GetOpponentPlayerStateByPlayerId(int32 PlayerId) const;
 	int32 CalcRequiredToCall(int32 RequestPlayerId) const;
+
+protected:
+	// Day16. 카드액터 참조 변수
+	UPROPERTY()
+	ACardActor* P1WorldCard = nullptr;
+
+	UPROPERTY()
+	ACardActor* P2WorldCard = nullptr;
+
+	void CacheWorldCardActors();
+
+	// 텍스처 매핑. CardFrontTextures[0] = 카드 1
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card")
+	TArray<TObjectPtr<UTexture2D>> CardFrontTextures;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card")
+	TObjectPtr<UTexture2D> CardBackTexture = nullptr;
+
+	// 카드 값에 맞는 텍스쳐 가져오는 함수
+	UTexture2D* GetFrontTextureForCardValue(int32 CardValue) const;
+
+	// 실제 월드 갱신 함수
+	void UpdateWorldCardVisuals();
 };

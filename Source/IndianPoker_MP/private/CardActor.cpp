@@ -32,6 +32,8 @@ void ACardActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifeti
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(ACardActor, CurrentCardValue);
+	// Day17
+	DOREPLIFETIME(ACardActor, bRevealed);
 }
 
 void ACardActor::SetCardValueServer(int32 InCardValue)
@@ -47,7 +49,10 @@ void ACardActor::SetCardValueServer(int32 InCardValue)
 		*GetName(), CurrentCardValue);
 
 	// 서버도 자기 화면에서 즉시 갱신해야 하므로 직접 호출
-	BP_OnCardValueChanged(CurrentCardValue);
+	//BP_OnCardValueChanged(CurrentCardValue);
+
+	// Day17
+	UpdateCardVisual();
 }
 
 void ACardActor::OnRep_CurrentCardValue()
@@ -55,6 +60,29 @@ void ACardActor::OnRep_CurrentCardValue()
 	UE_LOG(LogTemp, Warning, TEXT("[CardActor] OnRep_CurrentCardValue | %s | Value=%d"),
 		*GetName(), CurrentCardValue);
 
-	BP_OnCardValueChanged(CurrentCardValue);
+	//BP_OnCardValueChanged(CurrentCardValue);
+
+	// Day17.
+	UpdateCardVisual();
 }
 
+void ACardActor::OnRep_bRevealed()
+{
+	UpdateCardVisual();
+}
+
+void ACardActor::SetRevealState(bool bNewRevealed)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	bRevealed = bNewRevealed;
+	UpdateCardVisual();
+}
+
+void ACardActor::UpdateCardVisual()
+{
+	BP_UpdateCardVisual(CurrentCardValue, bRevealed);
+}

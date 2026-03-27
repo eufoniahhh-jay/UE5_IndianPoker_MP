@@ -50,4 +50,21 @@ protected:
 
 	UFUNCTION()
 	void OnRep_CurrentCardValue();
+
+public:
+	// Day17. showdown에서 카드 공개
+	UPROPERTY(ReplicatedUsing = OnRep_bRevealed, BlueprintReadOnly, Category = "Card")
+	bool bRevealed = false;
+
+	UFUNCTION()
+	void OnRep_bRevealed();
+
+	UFUNCTION(BlueprintCallable, Category = "Card")
+	void SetRevealState(bool bNewRevealed);
+
+	UFUNCTION(BlueprintCallable, Category = "Card")
+	void UpdateCardVisual();
+
+	UFUNCTION(BlueprintImplementableEvent, Category = "Card")
+	void BP_UpdateCardVisual(int32 InCardValue, bool bInRevealed);
 };

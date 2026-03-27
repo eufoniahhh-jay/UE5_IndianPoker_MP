@@ -293,6 +293,15 @@ void AIndianPokerGameModeBase::StartRound()
 
 	UE_LOG(LogTemp, Warning, TEXT("[Round] Reset Round State - bRoundEnded=false, P1/P2 Folded=false"));
 
+	// Day17. 카드 재분배 전에 이전 라운드 showdown에서 설정한 카드 공개 상태 끄기
+	// Day17. showdown 들어온 순간 카드 공개 
+	if (P1WorldCard) {
+		P1WorldCard->SetRevealState(false);
+	}
+	if (P2WorldCard) {
+		P2WorldCard->SetRevealState(false);
+	}
+
 	SetPhaseServer(EGamePhase::Deal);
 
 	// Day12: 이번 라운드 베팅 기여량 초기화 (ApplyAnte보다 먼저!)
@@ -1278,7 +1287,7 @@ void AIndianPokerGameModeBase::ResolveFoldRound(
 	UE_LOG(LogTemp, Warning, TEXT("[FoldResolve] State Reset After Fold - Pot=%d RoundBet=%d RequiredToCall=%d"),
 		Pot, RoundBet, RequiredToCall);
 
-	AdvanceAfterRound();
+	AdvanceAfterRound(2.0);
 }
 
 void AIndianPokerGameModeBase::ResolveShowdown()
@@ -1296,6 +1305,14 @@ void AIndianPokerGameModeBase::ResolveShowdown()
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Showdown] Failed - P1 or P2 is null"));
 		return;
+	}
+
+	// Day17. showdown 들어온 순간 카드 공개 
+	if (P1WorldCard) {
+		P1WorldCard->SetRevealState(true);
+	}
+	if (P2WorldCard) {
+		P2WorldCard->SetRevealState(true);
 	}
 
 	const int32 P1Card = P1->HiddenCardValue;
@@ -1339,10 +1356,10 @@ void AIndianPokerGameModeBase::ResolveShowdown()
 	// Day14. Showdown에서 Pot이 0으로 바뀌어도 그 직후 동기화가 없어서 HUD 반영이 늦을 수 있어서 넣어줌
 	SyncRoundStateToGameState();
 
-	AdvanceAfterRound();
+	AdvanceAfterRound(3.0);
 }
 
-void AIndianPokerGameModeBase::AdvanceAfterRound()
+void AIndianPokerGameModeBase::AdvanceAfterRound(float delay)
 {
 	AIndianPokerPlayerState* P1 = nullptr;
 	AIndianPokerPlayerState* P2 = nullptr;
@@ -1381,7 +1398,7 @@ void AIndianPokerGameModeBase::AdvanceAfterRound()
 		NextRoundTimerHandle,
 		this,
 		&AIndianPokerGameModeBase::TryStartRound,
-		1.0f,
+		delay,
 		false
 	);
 	//TryStartRound();

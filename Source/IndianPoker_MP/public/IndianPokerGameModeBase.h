@@ -177,7 +177,7 @@ public:
 	void ResolveShowdown();
 
 	// Day13. 라운드 종료 공통 처리 함수 (전체흐름제어/종료판정담당/종료처리담당) 3가지
-	void AdvanceAfterRound();
+	void AdvanceAfterRound(float delay);
 	bool IsMatchEnded() const;
 	void HandleMatchEnd();
 	FTimerHandle NextRoundTimerHandle;

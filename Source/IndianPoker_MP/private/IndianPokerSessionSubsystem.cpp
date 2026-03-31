@@ -280,26 +280,28 @@ void UIndianPokerSessionSubsystem::OnFindSessionsComplete(bool bWasSuccessful)
 // JoinSession() (Day6는 JoinFirstSession) + Join 콜백
 void UIndianPokerSessionSubsystem::JoinFirstSession()
 {
-	IOnlineSessionPtr SI = GetSessionInterface();
-	if (!SI.IsValid()) return;
+	//IOnlineSessionPtr SI = GetSessionInterface();
+	//if (!SI.IsValid()) return;
 
-	if (!SessionSearch.IsValid() || SessionSearch->SearchResults.Num() == 0)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[SessionSub][%s] JoinFirstSession: No SearchResults. Call FindSessions first."), *NetModeToStr(GetWorld()));
-		return;
-	}
+	//if (!SessionSearch.IsValid() || SessionSearch->SearchResults.Num() == 0)
+	//{
+	//	UE_LOG(LogTemp, Warning, TEXT("[SessionSub][%s] JoinFirstSession: No SearchResults. Call FindSessions first."), *NetModeToStr(GetWorld()));
+	//	return;
+	//}
 
-	JoinSessionCompleteHandle = SI->AddOnJoinSessionCompleteDelegate_Handle(JoinSessionCompleteDelegate);
+	//JoinSessionCompleteHandle = SI->AddOnJoinSessionCompleteDelegate_Handle(JoinSessionCompleteDelegate);
 
-	UE_LOG(LogTemp, Warning, TEXT("[SessionSub][%s] JoinSession -> request using Result[0]"), *NetModeToStr(GetWorld()));
+	//UE_LOG(LogTemp, Warning, TEXT("[SessionSub][%s] JoinSession -> request using Result[0]"), *NetModeToStr(GetWorld()));
 
-	//const bool bRequestSent = SI->JoinSession(0, IndianPokerSessionName, SessionSearch->SearchResults[0]);
-	const bool bRequestSent = SI->JoinSession(0, NAME_GameSession, SessionSearch->SearchResults[0]);
-	if (!bRequestSent)
-	{
-		UE_LOG(LogTemp, Error, TEXT("[SessionSub][%s] JoinSession request FAILED to send"), *NetModeToStr(GetWorld()));
-		SI->ClearOnJoinSessionCompleteDelegate_Handle(JoinSessionCompleteHandle);
-	}
+	////const bool bRequestSent = SI->JoinSession(0, IndianPokerSessionName, SessionSearch->SearchResults[0]);
+	//const bool bRequestSent = SI->JoinSession(0, NAME_GameSession, SessionSearch->SearchResults[0]);
+	//if (!bRequestSent)
+	//{
+	//	UE_LOG(LogTemp, Error, TEXT("[SessionSub][%s] JoinSession request FAILED to send"), *NetModeToStr(GetWorld()));
+	//	SI->ClearOnJoinSessionCompleteDelegate_Handle(JoinSessionCompleteHandle);
+	//}
+
+	JoinSessionByIndex(0);
 }
 
 // (Join 콜백) + ConnectString 로그
@@ -441,7 +443,32 @@ void UIndianPokerSessionSubsystem::OnDestroySessionComplete(FName SessionName, b
 	UE_LOG(LogTemp, Warning, TEXT("[SessionSub][%s] OnDestroySessionComplete: %s Success=%d"),
 		*NetModeToStr(GetWorld()), *SessionName.ToString(), bWasSuccessful ? 1 : 0);
 
-	// Day8. Destroy 완료 후 로비맵 열기
+	// Day18-2
+	if (!bWasSuccessful)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[SessionSub] DestroySession failed."));
+		bPendingJoinAfterDestroy = false;
+		PendingJoinIndex = INDEX_NONE;
+		bPendingHostAfterDestroy = false;
+		return;
+	}
+
+	// Join 대기 중이면 Destroy 후 바로 Join 재시도
+	if (bPendingJoinAfterDestroy)
+	{
+		const int32 SavedJoinIndex = PendingJoinIndex;
+
+		bPendingJoinAfterDestroy = false;
+		PendingJoinIndex = INDEX_NONE;
+
+		UE_LOG(LogTemp, Warning, TEXT("[SessionSub][%s] Destroy complete -> retry JoinSessionByIndex(%d)"),
+			*NetModeToStr(GetWorld()), SavedJoinIndex);
+
+		JoinSessionByIndex(SavedJoinIndex);
+		return;
+	}
+
+	// Day8. Destroy 완료 후 로비맵 열기 - Day18-2. 결국 Host 대기중이면 Destroy 후 로비 오픈하게 되는 것
 	if (bPendingHostAfterDestroy)
 	{
 		bPendingHostAfterDestroy = false;
@@ -469,6 +496,19 @@ void UIndianPokerSessionSubsystem::JoinSessionByIndex(int32 Index)
 	{
 		UE_LOG(LogTemp, Error, TEXT("[SessionSub][%s] JoinSessionByIndex failed - invalid index %d"),
 			*NetModeToStr(GetWorld()), Index);
+		return;
+	}
+
+	// Day18-2. 기존 세션이 있으면 먼저 Destroy 후 Join
+	if (SI->GetNamedSession(NAME_GameSession) != nullptr)
+	{
+		bPendingJoinAfterDestroy = true;
+		PendingJoinIndex = Index;
+
+		UE_LOG(LogTemp, Warning, TEXT("[SessionSub][%s] JoinSessionByIndex -> Existing session found, DestroySession first (Index=%d)"),
+			*NetModeToStr(GetWorld()), Index);
+
+		DestroySession();
 		return;
 	}
 

@@ -50,7 +50,7 @@ public:
 	void HostSession();
 	UFUNCTION(BlueprintCallable)
 	void FindSessions();
-	void JoinFirstSession();     // Day6는 Result[0]만 조인하는 간단 버전
+	void JoinFirstSession();     // Day6는 Result[0]만 조인하는 간단 버전 
 	UFUNCTION(BlueprintCallable)
 	void DestroySession();
 
@@ -103,6 +103,10 @@ private:
 	TArray<FSessionRowData> CachedRowData;						// UI 표시용(블루프린트에서 보기 쉬운 데이터)
 
 	bool bIsFindingSessions = false;
+
+	// Day18-2. Join용 pending 상태값을 추가. (Host와 똑같이 Destroy -> Join 재시도 흐름 위함)
+	bool bPendingJoinAfterDestroy = false;
+	int32 PendingJoinIndex = INDEX_NONE;
 
 public:
 	UPROPERTY(BlueprintAssignable)

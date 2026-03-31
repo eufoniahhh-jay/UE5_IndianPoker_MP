@@ -30,7 +30,8 @@ public:
 	UPROPERTY(Replicated, BlueprintReadOnly, Category = "IndianPoker|Betting")
 	int32 Chips = 10;
 
-	UPROPERTY(Replicated, BlueprintReadOnly, Category = "IndianPoker|Betting")
+	//UPROPERTY(Replicated, BlueprintReadOnly, Category = "IndianPoker|Betting") 
+	UPROPERTY(BlueprintReadOnly, Category = "IndianPoker|Betting")
 	int32 HiddenCardValue = -1;
 
 	UPROPERTY(Replicated, BlueprintReadOnly, Category = "IndianPoker|Betting")

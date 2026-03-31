@@ -176,9 +176,9 @@ public:
 	// Day13. Showdown 결과 처리 함수
 	void ResolveShowdown();
 
-	// Day13. 라운드 종료 공통 처리 함수 (전체흐름제어/종료판정담당/종료처리담당) 3가지
+	// Day13. 라운드 종료 공통 처리 함수 (전체흐름제어/종료판정담당/종료처리담당) 3가지 
 	void AdvanceAfterRound(float delay);
-	bool IsMatchEnded() const;
+	bool IsMatchEnded();
 	void HandleMatchEnd();
 	FTimerHandle NextRoundTimerHandle;
 
@@ -190,7 +190,7 @@ public:
 		AIndianPokerPlayerState*& OutP2
 	) const;
 
-	AIndianPokerPlayerState* FindRoundPlayerStateById(int32 PlayerId) const;
+	AIndianPokerPlayerState* FindRoundPlayerStateById(int32 PlayerId);
 
 	// 시작시 최초 참가자 캐시하기(tryStartRound 내에서 한 번만)
 	bool EnsureMatchPlayersCached();
@@ -199,7 +199,16 @@ public:
 	bool GetCachedRoundPlayers(
 		AIndianPokerPlayerState*& OutP1,
 		AIndianPokerPlayerState*& OutP2
-	) const;
+	);
+
+	// Day18. 실제 월드의 PlayerController를 기준으로 준비된 플레이어 2명을 모으는 헬퍼 함수
+	bool GatherReadyMatchPlayersFromControllers(
+		AIndianPokerPlayerState*& OutP1,
+		AIndianPokerPlayerState*& OutP2
+	);
+
+	//  PlayerState로 현재 playerController를 다시 찾는 방식
+	AIndianPokerPlayerController* FindControllerByPlayerState(AIndianPokerPlayerState* TargetPS) const;
 
 protected:
 	// Day12. RequiredToCall 계산용 헬퍼 3개

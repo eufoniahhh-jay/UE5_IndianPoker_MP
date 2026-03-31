@@ -33,20 +33,24 @@ void AIndianPokerGameModeBase::BeginPlay()
 	}
 
 	const FString MapName = GetWorld()->GetMapName();
-	UE_LOG(LogTemp, Warning, TEXT("[GameMode] BeginPlay - Map=%s"), *MapName);
+	const float TimeSeconds = GetWorld() ? GetWorld()->GetTimeSeconds() : -1.0f;
+
+	UE_LOG(LogTemp, Warning, TEXT("[GameMode] BeginPlay - Map=%s | Time=%.2f"),
+		*MapName,
+		TimeSeconds);
 
 	if (MapName.Contains(TEXT("GameMap")))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[GameMode] GameMap detected -> schedule (Delayed)TryStartRound"));
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] GameMap detected -> schedule DelayedTryStartRound after 2.0 sec"));
 
 		FTimerHandle TimerHandle;
 		GetWorldTimerManager().SetTimer(
 			TimerHandle,
 			this,
 			&AIndianPokerGameModeBase::DelayedTryStartRound,
-			0.5f,
+			2.0f,
 			false
-		);
+		); 
 	}
 
 	// Day16. 카드 액터 캐싱
@@ -55,18 +59,27 @@ void AIndianPokerGameModeBase::BeginPlay()
 
 void AIndianPokerGameModeBase::DelayedTryStartRound()
 {
+	const float TimeSeconds = GetWorld() ? GetWorld()->GetTimeSeconds() : -1.0f;
 	const int32 PlayerCount = GameState ? GameState->PlayerArray.Num() : -1;
 
-	UE_LOG(LogTemp, Warning, TEXT("[GameMode] DelayedTryStartRound - PlayerArray Num=%d"), PlayerCount);
+	UE_LOG(LogTemp, Warning, TEXT("[GameMode] DelayedTryStartRound FIRED | Time=%.2f |  PlayerArray Num=%d"), TimeSeconds, PlayerCount);
 
-	if (HasAuthority() && GameState && GameState->PlayerArray.Num() == 2)
+	/*if (HasAuthority() && GameState && GameState->PlayerArray.Num() == 2)
 	{
 		TryStartRound();
+	}*/
+	if (CanStartRound())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] DelayedTryStartRound -> ready, starting"));
+		TryStartRound();
+		return;
 	}
-	else
+	/*else
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[GameMode] DelayedTryStartRound denied"));
-	}
+	}*/
+	UE_LOG(LogTemp, Warning, TEXT("[GameMode] DelayedTryStartRound -> not ready, retry"));
+	GetWorldTimerManager().SetTimerForNextTick(this, &AIndianPokerGameModeBase::DelayedTryStartRound);
 }
 
 void AIndianPokerGameModeBase::PostLogin(APlayerController* NewPlayer)
@@ -205,18 +218,56 @@ void AIndianPokerGameModeBase::SyncRoundStateToGameState()
 	UE_LOG(LogTemp, Warning, TEXT("[GameMode] Round state synced to GameState"));
 
 	// Day15
-	GS->SetHasOpeningCheckServer(bHasOpeningCheck);
+	GS->SetHasOpeningCheckServer(bHasOpeningCheck); 
 }
+
+//bool AIndianPokerGameModeBase::CanStartRound()
+//{
+//	if (GameState == nullptr)
+//	{
+//		return false;
+//	}
+//
+//	if (GameState->PlayerArray.Num() != 2)
+//	{
+//		return false;
+//	}
+//
+//	return true;
+//}
 
 bool AIndianPokerGameModeBase::CanStartRound()
 {
-	if (GameState == nullptr)
+	if (!HasAuthority())
 	{
 		return false;
 	}
 
-	if (GameState->PlayerArray.Num() != 2)
+	AIndianPokerGameStateBase* GS = GetIndianPokerGameState();
+	if (!GS)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[CanStartRound] Failed - GameState is null"));
+		return false;
+	}
+
+	if (GS->PlayerArray.Num() != 2) 
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[CanStartRound] Failed - PlayerArray Num=%d"), GS->PlayerArray.Num());
+		return false;
+	}
+
+	AIndianPokerPlayerState* ReadyP1 = nullptr;
+	AIndianPokerPlayerState* ReadyP2 = nullptr;
+
+	if (!GatherReadyMatchPlayersFromControllers(ReadyP1, ReadyP2))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[CanStartRound] Failed - ready players not gathered yet"));
+		return false;
+	}
+
+	if (!IsValid(ReadyP1) || !IsValid(ReadyP2))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[CanStartRound] Failed - gathered players invalid"));
 		return false;
 	}
 
@@ -225,7 +276,8 @@ bool AIndianPokerGameModeBase::CanStartRound()
 
 void AIndianPokerGameModeBase::TryStartRound()
 {
-	UE_LOG(LogTemp, Warning, TEXT("[Round] TryStartRound"));
+	const float TimeSeconds = GetWorld() ? GetWorld()->GetTimeSeconds() : -1.0f;
+	UE_LOG(LogTemp, Warning, TEXT("[Round] TryStartRound | Time=%.2f"), TimeSeconds);
 
 	if (!CanStartRound())
 	{
@@ -570,12 +622,15 @@ void AIndianPokerGameModeBase::SendVisibleOpponentCardsToClients()
 		return;
 	}
 
-	AIndianPokerPlayerController* PC1 = Cast<AIndianPokerPlayerController>(P1->GetPlayerController());
-	AIndianPokerPlayerController* PC2 = Cast<AIndianPokerPlayerController>(P2->GetPlayerController());
+	/*AIndianPokerPlayerController* PC1 = Cast<AIndianPokerPlayerController>(P1->GetPlayerController());
+	AIndianPokerPlayerController* PC2 = Cast<AIndianPokerPlayerController>(P2->GetPlayerController());*/
+	AIndianPokerPlayerController* PC1 = FindControllerByPlayerState(P1);
+	AIndianPokerPlayerController* PC2 = FindControllerByPlayerState(P2);
 
 	if (!PC1 || !PC2)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Deal] SendVisibleOpponentCardsToClients failed - PlayerController cast failed"));
+		//UE_LOG(LogTemp, Warning, TEXT("[Deal] SendVisibleOpponentCardsToClients failed - PlayerController cast failed"));
+		UE_LOG(LogTemp, Warning, TEXT("[Deal] SendVisibleOpponentCardsToClients failed - PlayerController lookup failed"));
 		return;
 	}
 
@@ -1218,6 +1273,16 @@ void AIndianPokerGameModeBase::ResolveFoldRound(
 		return;
 	}
 
+	// Fold 라운드 종료 시에도 카드 공개
+	if (P1WorldCard)
+	{
+		P1WorldCard->SetRevealState(true);
+	}
+	if (P2WorldCard)
+	{
+		P2WorldCard->SetRevealState(true);
+	}
+
 	const int32 PotBeforeAward = Pot;
 	const int32 WinnerChipsBefore = WinnerPS->Chips;
 	const int32 FolderChipsBefore = FolderPS->Chips;
@@ -1231,6 +1296,7 @@ void AIndianPokerGameModeBase::ResolveFoldRound(
 	if (FolderHiddenCard == 10)
 	{
 		FolderPS->Chips -= 5;
+		WinnerPS->Chips += 5;
 		bAppliedTenPenalty = true;
 	}
 
@@ -1404,7 +1470,7 @@ void AIndianPokerGameModeBase::AdvanceAfterRound(float delay)
 	//TryStartRound();
 }
 
-bool AIndianPokerGameModeBase::IsMatchEnded() const
+bool AIndianPokerGameModeBase::IsMatchEnded()
 {
 	AIndianPokerPlayerState* P1 = nullptr;
 	AIndianPokerPlayerState* P2 = nullptr;
@@ -1552,7 +1618,7 @@ bool AIndianPokerGameModeBase::GetRoundPlayerStates(
 	return (OutP1 && OutP2);
 }
 
-AIndianPokerPlayerState* AIndianPokerGameModeBase::FindRoundPlayerStateById(int32 PlayerId) const
+AIndianPokerPlayerState* AIndianPokerGameModeBase::FindRoundPlayerStateById(int32 PlayerId)
 {
 	AIndianPokerPlayerState* P1 = nullptr;
 	AIndianPokerPlayerState* P2 = nullptr;
@@ -1576,57 +1642,403 @@ AIndianPokerPlayerState* AIndianPokerGameModeBase::FindRoundPlayerStateById(int3
 	return nullptr;
 }
 
+//bool AIndianPokerGameModeBase::EnsureMatchPlayersCached()
+//{
+//	UE_LOG(LogTemp, Warning, TEXT("[EnsureMatchPlayersCached] Before - P1=%p P2=%p"), RoundP1PS.Get(), RoundP2PS.Get());
+//
+//	if (RoundP1PS && RoundP2PS)
+//	{
+//		return true;
+//	}
+//
+//	AIndianPokerGameStateBase* GS = GetIndianPokerGameState();
+//	if (!GS)
+//	{
+//		UE_LOG(LogTemp, Warning, TEXT("[MatchCache] Failed - GameState is null"));
+//		return false;
+//	}
+//
+//	if (GS->PlayerArray.Num() != 2)
+//	{
+//		UE_LOG(LogTemp, Warning, TEXT("[MatchCache] Failed - PlayerArray Num=%d"), GS->PlayerArray.Num());
+//		return false;
+//	}
+//
+//	RoundP1PS = Cast<AIndianPokerPlayerState>(GS->PlayerArray[0]);
+//	RoundP2PS = Cast<AIndianPokerPlayerState>(GS->PlayerArray[1]);
+//
+//	if (!RoundP1PS || !RoundP2PS)
+//	{
+//		UE_LOG(LogTemp, Warning, TEXT("[MatchCache] Failed - RoundP1PS or RoundP2PS is null"));
+//		return false;
+//	}
+//
+//	UE_LOG(LogTemp, Warning, TEXT("[MatchCache] Cached P1=%s Id=%d | P2=%s Id=%d"),
+//		*GetNameSafe(RoundP1PS), RoundP1PS->GetPlayerId(),
+//		*GetNameSafe(RoundP2PS), RoundP2PS->GetPlayerId());
+//
+//	return true;
+//}
+
+//bool AIndianPokerGameModeBase::EnsureMatchPlayersCached()
+//{
+//	UE_LOG(LogTemp, Warning, TEXT("[EnsureMatchPlayersCached] Before - P1=%s Ptr=%p Id=%d | P2=%s Ptr=%p Id=%d"),
+//		*GetNameSafe(RoundP1PS), RoundP1PS.Get(), RoundP1PS ? RoundP1PS->GetPlayerId() : -1,
+//		*GetNameSafe(RoundP2PS), RoundP2PS.Get(), RoundP2PS ? RoundP2PS->GetPlayerId() : -1);
+//
+//	const bool bP1Valid = IsValid(RoundP1PS) && RoundP1PS->GetPlayerId() != INDEX_NONE;
+//	const bool bP2Valid = IsValid(RoundP2PS) && RoundP2PS->GetPlayerId() != INDEX_NONE;
+//
+//	if (bP1Valid && bP2Valid)
+//	{
+//		return true;
+//	}
+//
+//	RoundP1PS = nullptr;
+//	RoundP2PS = nullptr;
+//
+//	AIndianPokerGameStateBase* GS = GetIndianPokerGameState();
+//	if (!GS)
+//	{
+//		UE_LOG(LogTemp, Warning, TEXT("[MatchCache] Failed - GameState is null"));
+//		return false;
+//	}
+//
+//	TArray<AIndianPokerPlayerState*> ValidPlayers;
+//
+//	for (APlayerState* PSBase : GS->PlayerArray)
+//	{
+//		AIndianPokerPlayerState* PS = Cast<AIndianPokerPlayerState>(PSBase);
+//		if (!IsValid(PS))
+//		{
+//			continue;
+//		}
+//
+//		if (PS->GetPlayerId() == INDEX_NONE)
+//		{
+//			continue;
+//		}
+//
+//		// 필요하면 이 줄은 잠깐 빼고 테스트 가능
+//		if (!PS->GetPlayerController())
+//		{
+//			UE_LOG(LogTemp, Warning, TEXT("[MatchCache] Skip PS=%s Id=%d - no PlayerController"),
+//				*GetNameSafe(PS), PS->GetPlayerId());
+//			continue;
+//		}
+//
+//		ValidPlayers.Add(PS);
+//
+//		UE_LOG(LogTemp, Warning, TEXT("[MatchCache] Candidate PS=%s Ptr=%p Id=%d PC=%s"),
+//			*GetNameSafe(PS),
+//			PS,
+//			PS->GetPlayerId(),
+//			*GetNameSafe(PS->GetPlayerController()));
+//	}
+//
+//	if (ValidPlayers.Num() != 2)
+//	{
+//		UE_LOG(LogTemp, Warning, TEXT("[MatchCache] Failed - ValidPlayers Num=%d"), ValidPlayers.Num());
+//		return false;
+//	}
+//
+//	RoundP1PS = ValidPlayers[0];
+//	RoundP2PS = ValidPlayers[1];
+//
+//	UE_LOG(LogTemp, Warning, TEXT("[MatchCache] Rebuilt P1=%s Ptr=%p Id=%d | P2=%s Ptr=%p Id=%d"),
+//		*GetNameSafe(RoundP1PS), RoundP1PS.Get(), RoundP1PS ? RoundP1PS->GetPlayerId() : -1,
+//		*GetNameSafe(RoundP2PS), RoundP2PS.Get(), RoundP2PS ? RoundP2PS->GetPlayerId() : -1);
+//
+//	return IsValid(RoundP1PS) && IsValid(RoundP2PS);
+//}
+
+//bool AIndianPokerGameModeBase::EnsureMatchPlayersCached()
+//{
+//	UE_LOG(LogTemp, Warning, TEXT("[EnsureMatchPlayersCached] Before - P1=%s Ptr=%p Id=%d | P2=%s Ptr=%p Id=%d"),
+//		*GetNameSafe(RoundP1PS), RoundP1PS.Get(), RoundP1PS ? RoundP1PS->GetPlayerId() : -1,
+//		*GetNameSafe(RoundP2PS), RoundP2PS.Get(), RoundP2PS ? RoundP2PS->GetPlayerId() : -1);
+//
+//	const bool bP1Valid = IsValid(RoundP1PS) && RoundP1PS->GetPlayerId() != INDEX_NONE;
+//	const bool bP2Valid = IsValid(RoundP2PS) && RoundP2PS->GetPlayerId() != INDEX_NONE;
+//
+//	if (bP1Valid && bP2Valid)
+//	{
+//		return true;
+//	}
+//
+//	RoundP1PS = nullptr;
+//	RoundP2PS = nullptr;
+//
+//	AIndianPokerPlayerState* GatheredP1 = nullptr;
+//	AIndianPokerPlayerState* GatheredP2 = nullptr;
+//
+//	if (!GatherReadyMatchPlayersFromControllers(GatheredP1, GatheredP2))
+//	{
+//		UE_LOG(LogTemp, Warning, TEXT("[MatchCache] Failed - GatherReadyMatchPlayersFromControllers failed"));
+//		return false;
+//	}
+//
+//	if (!IsValid(GatheredP1) || !IsValid(GatheredP2))
+//	{
+//		UE_LOG(LogTemp, Warning, TEXT("[MatchCache] Failed - Gathered players invalid"));
+//		return false;
+//	}
+//
+//	RoundP1PS = GatheredP1;
+//	RoundP2PS = GatheredP2;
+//
+//	UE_LOG(LogTemp, Warning, TEXT("[MatchCache] Rebuilt P1=%s Ptr=%p Id=%d | P2=%s Ptr=%p Id=%d"),
+//		*GetNameSafe(RoundP1PS), RoundP1PS.Get(), RoundP1PS ? RoundP1PS->GetPlayerId() : -1,
+//		*GetNameSafe(RoundP2PS), RoundP2PS.Get(), RoundP2PS ? RoundP2PS->GetPlayerId() : -1);
+//
+//	return IsValid(RoundP1PS) && IsValid(RoundP2PS);
+//}
 bool AIndianPokerGameModeBase::EnsureMatchPlayersCached()
 {
-	UE_LOG(LogTemp, Warning, TEXT("[EnsureMatchPlayersCached] Before - P1=%p P2=%p"), RoundP1PS.Get(), RoundP2PS.Get());
+	UE_LOG(LogTemp, Warning, TEXT("[EnsureMatchPlayersCached] Before - P1=%s Ptr=%p Id=%d | P2=%s Ptr=%p Id=%d"),
+		*GetNameSafe(RoundP1PS), RoundP1PS.Get(), RoundP1PS ? RoundP1PS->GetPlayerId() : -1,
+		*GetNameSafe(RoundP2PS), RoundP2PS.Get(), RoundP2PS ? RoundP2PS->GetPlayerId() : -1);
 
-	if (RoundP1PS && RoundP2PS)
+	AIndianPokerPlayerState* GatheredP1 = nullptr;
+	AIndianPokerPlayerState* GatheredP2 = nullptr;
+
+	if (!GatherReadyMatchPlayersFromControllers(GatheredP1, GatheredP2))
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[MatchCache] Failed - GatherReadyMatchPlayersFromControllers failed"));
+		RoundP1PS = nullptr;
+		RoundP2PS = nullptr;
+		return false;
+	}
+
+	if (!IsValid(GatheredP1) || !IsValid(GatheredP2))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[MatchCache] Failed - Gathered players invalid"));
+		RoundP1PS = nullptr;
+		RoundP2PS = nullptr;
+		return false;
+	}
+
+	const bool bCacheMatchesGathered =
+		(RoundP1PS == GatheredP1 && RoundP2PS == GatheredP2) ||
+		(RoundP1PS == GatheredP2 && RoundP2PS == GatheredP1);
+
+	if (bCacheMatchesGathered)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[MatchCache] Cache already matches gathered players"));
 		return true;
 	}
 
-	AIndianPokerGameStateBase* GS = GetIndianPokerGameState();
-	if (!GS)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[MatchCache] Failed - GameState is null"));
-		return false;
-	}
+	UE_LOG(LogTemp, Warning, TEXT("[MatchCache] Cache mismatch detected -> recache"));
+	UE_LOG(LogTemp, Warning, TEXT("[MatchCache] Gathered P1=%s Ptr=%p Id=%d | Gathered P2=%s Ptr=%p Id=%d"),
+		*GetNameSafe(GatheredP1), GatheredP1, GatheredP1 ? GatheredP1->GetPlayerId() : -1,
+		*GetNameSafe(GatheredP2), GatheredP2, GatheredP2 ? GatheredP2->GetPlayerId() : -1);
 
-	if (GS->PlayerArray.Num() != 2)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[MatchCache] Failed - PlayerArray Num=%d"), GS->PlayerArray.Num());
-		return false;
-	}
+	RoundP1PS = GatheredP1;
+	RoundP2PS = GatheredP2;
 
-	RoundP1PS = Cast<AIndianPokerPlayerState>(GS->PlayerArray[0]);
-	RoundP2PS = Cast<AIndianPokerPlayerState>(GS->PlayerArray[1]);
-
-	if (!RoundP1PS || !RoundP2PS)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[MatchCache] Failed - RoundP1PS or RoundP2PS is null"));
-		return false;
-	}
-
-	UE_LOG(LogTemp, Warning, TEXT("[MatchCache] Cached P1=%s Id=%d | P2=%s Id=%d"),
-		*GetNameSafe(RoundP1PS), RoundP1PS->GetPlayerId(),
-		*GetNameSafe(RoundP2PS), RoundP2PS->GetPlayerId());
+	UE_LOG(LogTemp, Warning, TEXT("[MatchCache] Rebuilt P1=%s Ptr=%p Id=%d | P2=%s Ptr=%p Id=%d"),
+		*GetNameSafe(RoundP1PS), RoundP1PS.Get(), RoundP1PS ? RoundP1PS->GetPlayerId() : -1,
+		*GetNameSafe(RoundP2PS), RoundP2PS.Get(), RoundP2PS ? RoundP2PS->GetPlayerId() : -1);
 
 	return true;
 }
 
+//bool AIndianPokerGameModeBase::GetCachedRoundPlayers(
+//	AIndianPokerPlayerState*& OutP1,
+//	AIndianPokerPlayerState*& OutP2)
+//{
+//	OutP1 = RoundP1PS;
+//	OutP2 = RoundP2PS;
+//
+//	UE_LOG(LogTemp, Warning, TEXT("[GetCachedRoundPlayers] RoundP1PS=%s Ptr=%p Id=%d | RoundP2PS=%s Ptr=%p Id=%d"),
+//		*GetNameSafe(RoundP1PS), RoundP1PS.Get(), RoundP1PS ? RoundP1PS->GetPlayerId() : -1,
+//		*GetNameSafe(RoundP2PS), RoundP2PS.Get(), RoundP2PS ? RoundP2PS->GetPlayerId() : -1
+//	);
+//
+//	return (OutP1 && OutP2);
+//}
+
+//bool AIndianPokerGameModeBase::GetCachedRoundPlayers(
+//	AIndianPokerPlayerState*& OutP1,
+//	AIndianPokerPlayerState*& OutP2)
+//{
+//	OutP1 = nullptr;
+//	OutP2 = nullptr;
+//
+//	const bool bP1Valid = IsValid(RoundP1PS) && RoundP1PS->GetPlayerId() != INDEX_NONE;
+//	const bool bP2Valid = IsValid(RoundP2PS) && RoundP2PS->GetPlayerId() != INDEX_NONE;
+//
+//	if (!bP1Valid || !bP2Valid)
+//	{
+//		UE_LOG(LogTemp, Warning, TEXT("[GetCachedRoundPlayers] Cache invalid -> rebuild attempt"));
+//		if (!EnsureMatchPlayersCached())
+//		{
+//			UE_LOG(LogTemp, Warning, TEXT("[GetCachedRoundPlayers] Rebuild failed"));
+//			return false;
+//		}
+//	}
+//
+//	OutP1 = RoundP1PS;
+//	OutP2 = RoundP2PS;
+//
+//	UE_LOG(LogTemp, Warning, TEXT("[GetCachedRoundPlayers] P1=%s Ptr=%p Id=%d | P2=%s Ptr=%p Id=%d"),
+//		*GetNameSafe(OutP1), OutP1, OutP1 ? OutP1->GetPlayerId() : -1,
+//		*GetNameSafe(OutP2), OutP2, OutP2 ? OutP2->GetPlayerId() : -1);
+//
+//	return IsValid(OutP1) && IsValid(OutP2);
+//}
+
 bool AIndianPokerGameModeBase::GetCachedRoundPlayers(
 	AIndianPokerPlayerState*& OutP1,
-	AIndianPokerPlayerState*& OutP2) const
+	AIndianPokerPlayerState*& OutP2)
 {
+	OutP1 = nullptr;
+	OutP2 = nullptr;
+
+	if (!EnsureMatchPlayersCached())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GetCachedRoundPlayers] EnsureMatchPlayersCached failed"));
+		return false;
+	}
+
 	OutP1 = RoundP1PS;
 	OutP2 = RoundP2PS;
 
-	UE_LOG(LogTemp, Warning, TEXT("[GetCachedRoundPlayers] RoundP1PS=%s Ptr=%p Id=%d | RoundP2PS=%s Ptr=%p Id=%d"),
-		*GetNameSafe(RoundP1PS), RoundP1PS.Get(), RoundP1PS ? RoundP1PS->GetPlayerId() : -1,
-		*GetNameSafe(RoundP2PS), RoundP2PS.Get(), RoundP2PS ? RoundP2PS->GetPlayerId() : -1
-	);
+	UE_LOG(LogTemp, Warning, TEXT("[GetCachedRoundPlayers] P1=%s Ptr=%p Id=%d | P2=%s Ptr=%p Id=%d"),
+		*GetNameSafe(OutP1), OutP1, OutP1 ? OutP1->GetPlayerId() : -1,
+		*GetNameSafe(OutP2), OutP2, OutP2 ? OutP2->GetPlayerId() : -1);
 
-	return (OutP1 && OutP2);
+	return IsValid(OutP1) && IsValid(OutP2);
+}
+
+bool AIndianPokerGameModeBase::GatherReadyMatchPlayersFromControllers(
+	AIndianPokerPlayerState*& OutP1,
+	AIndianPokerPlayerState*& OutP2)
+{
+	OutP1 = nullptr;
+	OutP2 = nullptr;
+
+	if (!HasAuthority())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GatherReadyPlayers] Failed - not authority"));
+		return false;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GatherReadyPlayers] Failed - World is null"));
+		return false;
+	}
+
+	TArray<AIndianPokerPlayerState*> ReadyPlayers;
+
+	for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+	{
+		APlayerController* BasePC = It->Get();
+		AIndianPokerPlayerController* PC = Cast<AIndianPokerPlayerController>(BasePC);
+		if (!IsValid(PC))
+		{
+			continue;
+		}
+
+		AIndianPokerPlayerState* PS = PC->GetPlayerState<AIndianPokerPlayerState>();
+		if (!IsValid(PS))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[GatherReadyPlayers] Skip PC=%s - PlayerState invalid"),
+				*GetNameSafe(PC));
+			continue;
+		}
+
+		if (PS->GetPlayerId() == INDEX_NONE)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[GatherReadyPlayers] Skip PS=%s - PlayerId invalid"),
+				*GetNameSafe(PS));
+			continue;
+		}
+		if (ReadyPlayers.Contains(PS))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[GatherReadyPlayers] Skip duplicate PS=%s Ptr=%p Id=%d"),
+				*GetNameSafe(PS),
+				PS,
+				PS->GetPlayerId());
+			continue;
+		}
+
+		ReadyPlayers.Add(PS);
+
+		UE_LOG(LogTemp, Warning, TEXT("[GatherReadyPlayers] Candidate PC=%s | PS=%s Ptr=%p Id=%d | IsLocal=%d"),
+			*GetNameSafe(PC),
+			*GetNameSafe(PS),
+			PS,
+			PS->GetPlayerId(),
+			PC->IsLocalController() ? 1 : 0);
+	}
+
+	if (ReadyPlayers.Num() != 2)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GatherReadyPlayers] Failed - ReadyPlayers Num=%d"), ReadyPlayers.Num());
+		return false;
+	}
+
+	OutP1 = ReadyPlayers[0];
+	OutP2 = ReadyPlayers[1];
+
+	UE_LOG(LogTemp, Warning, TEXT("[GatherReadyPlayers] Success - P1=%s Id=%d | P2=%s Id=%d"),
+		*GetNameSafe(OutP1), OutP1 ? OutP1->GetPlayerId() : -1,
+		*GetNameSafe(OutP2), OutP2 ? OutP2->GetPlayerId() : -1);
+
+	return true;
+}
+
+AIndianPokerPlayerController* AIndianPokerGameModeBase::FindControllerByPlayerState(AIndianPokerPlayerState* TargetPS) const
+{
+	if (!IsValid(TargetPS))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[FindControllerByPlayerState] Failed - TargetPS invalid"));
+		return nullptr;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[FindControllerByPlayerState] Failed - World is null"));
+		return nullptr;
+	}
+
+	for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+	{
+		APlayerController* BasePC = It->Get();
+		AIndianPokerPlayerController* PC = Cast<AIndianPokerPlayerController>(BasePC);
+		if (!IsValid(PC))
+		{
+			continue;
+		}
+
+		AIndianPokerPlayerState* PS = PC->GetPlayerState<AIndianPokerPlayerState>();
+		if (!IsValid(PS))
+		{
+			continue;
+		}
+
+		if (PS == TargetPS)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[FindControllerByPlayerState] Found PC=%s for PS=%s Ptr=%p Id=%d"),
+				*GetNameSafe(PC),
+				*GetNameSafe(TargetPS),
+				TargetPS,
+				TargetPS->GetPlayerId());
+
+			return PC;
+		}
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[FindControllerByPlayerState] Failed - no PC found for PS=%s Ptr=%p Id=%d"),
+		*GetNameSafe(TargetPS),
+		TargetPS,
+		TargetPS ? TargetPS->GetPlayerId() : -1);
+
+	return nullptr;
 }
 
 AIndianPokerPlayerState* AIndianPokerGameModeBase::GetPlayerStateByPlayerId(int32 PlayerId) const

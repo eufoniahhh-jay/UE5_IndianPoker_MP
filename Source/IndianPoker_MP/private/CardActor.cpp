@@ -25,14 +25,14 @@ void ACardActor::BeginPlay()
 {
 	Super::BeginPlay();
 	
-}
+} 
 
 void ACardActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(ACardActor, CurrentCardValue);
-	// Day17
+	// Day17 
 	DOREPLIFETIME(ACardActor, bRevealed);
 }
 

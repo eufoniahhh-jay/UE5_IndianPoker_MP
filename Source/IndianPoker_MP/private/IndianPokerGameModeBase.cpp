@@ -12,6 +12,7 @@
 #include "Algo/RandomShuffle.h"
 #include "CardActor.h"
 #include "Kismet/GameplayStatics.h"
+#include "IndianPokerSessionSubsystem.h"
 
 AIndianPokerGameModeBase::AIndianPokerGameModeBase()
 {
@@ -31,6 +32,9 @@ void AIndianPokerGameModeBase::BeginPlay()
 	{
 		return;
 	}
+
+	InitializeMatchModeFromSessionSubsystem();
+	EnsureBotParticipantCreated();
 
 	const FString MapName = GetWorld()->GetMapName();
 	const float TimeSeconds = GetWorld() ? GetWorld()->GetTimeSeconds() : -1.0f;
@@ -250,18 +254,40 @@ bool AIndianPokerGameModeBase::CanStartRound()
 		return false;
 	}
 
-	if (GS->PlayerArray.Num() != 2) 
+	// Day19. 이제 PvE일 경우에는 인간 1명 + Bot 1명 조합 가능하면 OK (PvP는 여전히 인간 2명 필요)
+	if (CurrentMatchMode == EIndianPokerMatchMode::PvP)
+	{
+		if (GS->PlayerArray.Num() != 2)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[CanStartRound] PvP failed - PlayerArray Num=%d"), GS->PlayerArray.Num());
+			return false;
+		}
+	}
+	else if (CurrentMatchMode == EIndianPokerMatchMode::PvE)
+	{
+		if (GS->PlayerArray.Num() < 1)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[CanStartRound] PvE failed - PlayerArray Num=%d"), GS->PlayerArray.Num());
+			return false;
+		}
+	}
+	/*if (GS->PlayerArray.Num() != 2) 
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[CanStartRound] Failed - PlayerArray Num=%d"), GS->PlayerArray.Num());
 		return false;
-	}
+	}*/
 
 	AIndianPokerPlayerState* ReadyP1 = nullptr;
 	AIndianPokerPlayerState* ReadyP2 = nullptr;
 
-	if (!GatherReadyMatchPlayersFromControllers(ReadyP1, ReadyP2))
+	/*if (!GatherReadyMatchPlayersFromControllers(ReadyP1, ReadyP2))
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[CanStartRound] Failed - ready players not gathered yet"));
+		return false;
+	}*/
+	if (!BuildMatchParticipants(ReadyP1, ReadyP2))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[CanStartRound] Failed - BuildMatchParticipants failed"));
 		return false;
 	}
 
@@ -281,7 +307,7 @@ void AIndianPokerGameModeBase::TryStartRound()
 
 	if (!CanStartRound())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Round] Start denied - player count is not 2"));
+		UE_LOG(LogTemp, Warning, TEXT("[Round] Start denied - participants not ready"));
 		return;
 	}
 
@@ -377,6 +403,9 @@ void AIndianPokerGameModeBase::StartRound()
 
 	SetPhaseServer(EGamePhase::Betting);
 
+	// Day19. 라운드 시작 직후 선공이 Bot이면 자동 행동 예약
+	TryScheduleBotTurn();
+
 	UE_LOG(LogTemp, Warning, TEXT("[Round] StartRound complete"));
 }
 
@@ -433,10 +462,24 @@ void AIndianPokerGameModeBase::ShuffleDeck()
 
 void AIndianPokerGameModeBase::DealCards()
 {
-	if (!GameState || GameState->PlayerArray.Num() != 2)
+	AIndianPokerPlayerState* P1 = nullptr;
+	AIndianPokerPlayerState* P2 = nullptr;
+	// Day19. Bot 사용을 위해 PlayerArray.Num() == 2 검사 없애기
+	/*if (!GameState || GameState->PlayerArray.Num() != 2)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Deal] DealCards failed - PlayerArray Num=%d"),
 			GameState ? GameState->PlayerArray.Num() : -1);
+		return;
+	}*/
+	if (!GetCachedRoundPlayers(P1, P2))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Deal] DealCards failed - GetCachedRoundPlayers failed"));
+		return;
+	}
+
+	if (!P1 || !P2)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Deal] DealCards failed - PlayerState cast failed"));
 		return;
 	}
 
@@ -448,18 +491,7 @@ void AIndianPokerGameModeBase::DealCards()
 
 	/*AIndianPokerPlayerState* P1 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[0]);
 	AIndianPokerPlayerState* P2 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[1]);*/
-	AIndianPokerPlayerState* P1 = nullptr;
-	AIndianPokerPlayerState* P2 = nullptr;
-	if (!GetCachedRoundPlayers(P1, P2))
-	{
-		return;
-	}
-
-	if (!P1 || !P2)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[Deal] DealCards failed - PlayerState cast failed"));
-		return;
-	}
+	
 
 	P1->HiddenCardValue = Deck.Pop();
 	P2->HiddenCardValue = Deck.Pop();
@@ -471,19 +503,20 @@ void AIndianPokerGameModeBase::DealCards()
 
 void AIndianPokerGameModeBase::InitBettingState()
 {
-	if (!GameState || GameState->PlayerArray.Num() != 2)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[Bet] InitBettingState failed - PlayerArray Num=%d"),
-			GameState ? GameState->PlayerArray.Num() : -1);
-		return;
-	}
-
 	/*AIndianPokerPlayerState* P1 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[0]);
 	AIndianPokerPlayerState* P2 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[1]);*/
 	AIndianPokerPlayerState* P1 = nullptr;
 	AIndianPokerPlayerState* P2 = nullptr;
+	// Day19. Bot 사용을 위해 PlayerArray.Num() == 2 검사 없애기
+	/*if (!GameState || GameState->PlayerArray.Num() != 2)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Bet] InitBettingState failed - PlayerArray Num=%d"),
+			GameState ? GameState->PlayerArray.Num() : -1);
+		return;
+	}*/
 	if (!GetCachedRoundPlayers(P1, P2))
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[Bet] ApplyAnte failed - GetCachedRoundPlayers failed"));
 		return;
 	}
 
@@ -569,19 +602,21 @@ void AIndianPokerGameModeBase::InitBettingState()
 
 void AIndianPokerGameModeBase::SetVisibleOpponentCards()
 {
-	if (!GameState || GameState->PlayerArray.Num() != 2)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[Deal] SetVisibleOpponentCards failed - PlayerArray Num=%d"),
-			GameState ? GameState->PlayerArray.Num() : -1);
-		return;
-	}
-
 	/*AIndianPokerPlayerState* P1 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[0]);
 	AIndianPokerPlayerState* P2 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[1]);*/
 	AIndianPokerPlayerState* P1 = nullptr;
 	AIndianPokerPlayerState* P2 = nullptr;
+	
+	// Day19. Bot 사용을 위해 PlayerArray.Num() == 2 검사 없애기
+	/*if (!GameState || GameState->PlayerArray.Num() != 2)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Deal] SetVisibleOpponentCards failed - PlayerArray Num=%d"),
+			GameState ? GameState->PlayerArray.Num() : -1);
+		return;
+	}*/
 	if (!GetCachedRoundPlayers(P1, P2))
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[Deal] SetVisibleOpponentCards failed - GetCachedRoundPlayers failed"));
 		return;
 	}
 
@@ -600,19 +635,13 @@ void AIndianPokerGameModeBase::SetVisibleOpponentCards()
 
 void AIndianPokerGameModeBase::SendVisibleOpponentCardsToClients()
 {
-	if (!GameState || GameState->PlayerArray.Num() != 2)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[Deal] SendVisibleOpponentCardsToClients failed - PlayerArray Num=%d"),
-			GameState ? GameState->PlayerArray.Num() : -1);
-		return;
-	}
-
 	/*AIndianPokerPlayerState* P1 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[0]);
 	AIndianPokerPlayerState* P2 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[1]);*/
 	AIndianPokerPlayerState* P1 = nullptr;
 	AIndianPokerPlayerState* P2 = nullptr;
 	if (!GetCachedRoundPlayers(P1, P2))
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[Deal] SendVisibleOpponentCardsToClients failed - GetCachedRoundPlayers failed"));
 		return;
 	}
 
@@ -622,8 +651,17 @@ void AIndianPokerGameModeBase::SendVisibleOpponentCardsToClients()
 		return;
 	}
 
-	/*AIndianPokerPlayerController* PC1 = Cast<AIndianPokerPlayerController>(P1->GetPlayerController());
-	AIndianPokerPlayerController* PC2 = Cast<AIndianPokerPlayerController>(P2->GetPlayerController());*/
+	// Day19. Bot 사용을 위해 PlayerArray.Num() == 2 검사 없애기
+	/*if (!GameState || GameState->PlayerArray.Num() != 2)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Deal] SendVisibleOpponentCardsToClients failed - PlayerArray Num=%d"),
+			GameState ? GameState->PlayerArray.Num() : -1);
+		return;
+	}*/
+
+	// Day19. 이제 컨트롤러 찾기를 PvP, PvE 분기로 나눠줘야 함
+	/*//AIndianPokerPlayerController* PC1 = Cast<AIndianPokerPlayerController>(P1->GetPlayerController());
+	//AIndianPokerPlayerController* PC2 = Cast<AIndianPokerPlayerController>(P2->GetPlayerController());
 	AIndianPokerPlayerController* PC1 = FindControllerByPlayerState(P1);
 	AIndianPokerPlayerController* PC2 = FindControllerByPlayerState(P2);
 
@@ -638,22 +676,78 @@ void AIndianPokerGameModeBase::SendVisibleOpponentCardsToClients()
 	PC2->ClientReceiveVisibleOpponentCard(P2->VisibleOpponentCardValue);
 
 	UE_LOG(LogTemp, Warning, TEXT("[Deal] Sent visible opponent card to P1 client: %d"), P1->VisibleOpponentCardValue);
-	UE_LOG(LogTemp, Warning, TEXT("[Deal] Sent visible opponent card to P2 client: %d"), P2->VisibleOpponentCardValue);
+	UE_LOG(LogTemp, Warning, TEXT("[Deal] Sent visible opponent card to P2 client: %d"), P2->VisibleOpponentCardValue);*/
+	if (CurrentMatchMode == EIndianPokerMatchMode::PvP)
+	{
+		AIndianPokerPlayerController* PC1 = FindControllerByPlayerState(P1);
+		AIndianPokerPlayerController* PC2 = FindControllerByPlayerState(P2);
+
+		if (!PC1 || !PC2)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[Deal] SendVisibleOpponentCardsToClients PvP failed - PlayerController lookup failed"));
+			return;
+		}
+
+		PC1->ClientReceiveVisibleOpponentCard(P1->VisibleOpponentCardValue);
+		PC2->ClientReceiveVisibleOpponentCard(P2->VisibleOpponentCardValue);
+
+		UE_LOG(LogTemp, Warning, TEXT("[Deal] Sent visible opponent card to P1 client: %d"), P1->VisibleOpponentCardValue);
+		UE_LOG(LogTemp, Warning, TEXT("[Deal] Sent visible opponent card to P2 client: %d"), P2->VisibleOpponentCardValue);
+		return;
+	}
+
+	if (CurrentMatchMode == EIndianPokerMatchMode::PvE)
+	{
+		AIndianPokerPlayerState* HumanPS = nullptr;
+
+		if (P1 && !P1->IsBot())
+		{
+			HumanPS = P1;
+		}
+		else if (P2 && !P2->IsBot())
+		{
+			HumanPS = P2;
+		}
+
+		if (!HumanPS)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[Deal] SendVisibleOpponentCardsToClients PvE failed - HumanPS not found"));
+			return;
+		}
+
+		AIndianPokerPlayerController* HumanPC = FindControllerByPlayerState(HumanPS);
+		if (!HumanPC)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[Deal] SendVisibleOpponentCardsToClients PvE failed - HumanPC not found"));
+			return;
+		}
+
+		HumanPC->ClientReceiveVisibleOpponentCard(HumanPS->VisibleOpponentCardValue);
+
+		UE_LOG(LogTemp, Warning, TEXT("[Deal] PvE sent visible opponent card to Human Id=%d Value=%d"),
+			HumanPS->GetPlayerId(),
+			HumanPS->VisibleOpponentCardValue);
+
+		return;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[Deal] SendVisibleOpponentCardsToClients failed - unknown match mode"));
 }
 
 void AIndianPokerGameModeBase::ApplyAnte()
 {
-	if (!GameState || GameState->PlayerArray.Num() != 2)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[Bet] ApplyAnte failed - PlayerArray Num=%d"),
-			GameState ? GameState->PlayerArray.Num() : -1);
-		return;
-	}
-
 	/*AIndianPokerPlayerState* P1 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[0]);
 	AIndianPokerPlayerState* P2 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[1]);*/
 	AIndianPokerPlayerState* P1 = nullptr;
 	AIndianPokerPlayerState* P2 = nullptr;
+
+	// Day19. Bot 사용을 위해 PlayerArray.Num() == 2 검사 없애기
+	/*if (!GameState || GameState->PlayerArray.Num() != 2)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Bet] ApplyAnte failed - PlayerArray Num=%d"),
+			GameState ? GameState->PlayerArray.Num() : -1);
+		return;
+	}*/
 	if (!GetCachedRoundPlayers(P1, P2))
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Bet] ApplyAnte failed - GetCachedRoundPlayers failed"));
@@ -796,12 +890,13 @@ bool AIndianPokerGameModeBase::ValidateActionRequest(
 
 	const int32 RequestingId = ControllerPS->GetPlayerId();
 
-	if (!GameState || GameState->PlayerArray.Num() != 2)
+	// Day19. Bot 사용을 위해 PlayerArray.Num() == 2 검사 없애기
+	/*if (!GameState || GameState->PlayerArray.Num() != 2)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[ActionValidation] Failed - Invalid PlayerArray Num=%d"),
 			GameState ? GameState->PlayerArray.Num() : -1);
 		return false;
-	}
+	}*/
 
 	/*AIndianPokerPlayerState* P1 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[0]);
 	AIndianPokerPlayerState* P2 = Cast<AIndianPokerPlayerState>(GameState->PlayerArray[1]);*/
@@ -842,7 +937,8 @@ bool AIndianPokerGameModeBase::ValidateActionRequest(
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[ActionValidation] Failed - RequestingPS not found in PlayerArray"));
+		//UE_LOG(LogTemp, Warning, TEXT("[ActionValidation] Failed - RequestingPS not found in PlayerArray"));
+		UE_LOG(LogTemp, Warning, TEXT("[ActionValidation] Failed - RequestingPS not found in cached participants"));
 		return false;
 	}
 
@@ -1011,7 +1107,8 @@ bool AIndianPokerGameModeBase::HandleAction_Check(
 	LastActionText = FString::Printf(TEXT("Player %d Checked"), RequestingPS->GetPlayerId());
 
 	SyncRoundStateToGameState();
-
+	// Day19. 턴이 BOT에게 넘어가는 시점에서 호출
+	TryScheduleBotTurn();
 
 	UE_LOG(LogTemp, Warning, TEXT("[Check] Success - PlayerId=%d checked"), RequestingPS->GetPlayerId());
 	UE_LOG(LogTemp, Warning, TEXT("[Check] bHasOpeningCheck=true"));
@@ -1236,6 +1333,8 @@ bool AIndianPokerGameModeBase::HandleAction_Raise(
 	);
 
 	SyncRoundStateToGameState();
+	// Day19. 턴이 BOT에게 넘어가는 시점에서 호출
+	TryScheduleBotTurn();
 
 	UE_LOG(LogTemp, Warning,
 		TEXT("[Raise] Success - PlayerId=%d Paid=%d | Chips=%d | Contribution=%d | Pot=%d"),
@@ -1594,6 +1693,7 @@ void AIndianPokerGameModeBase::HandleMatchEnd()
 //		Pot, RoundBet, RequiredToCall);
 //}
 
+// 이제 미사용
 bool AIndianPokerGameModeBase::GetRoundPlayerStates(
 	AIndianPokerPlayerState*& OutP1,
 	AIndianPokerPlayerState*& OutP2) const
@@ -1802,9 +1902,17 @@ bool AIndianPokerGameModeBase::EnsureMatchPlayersCached()
 	AIndianPokerPlayerState* GatheredP1 = nullptr;
 	AIndianPokerPlayerState* GatheredP2 = nullptr;
 
-	if (!GatherReadyMatchPlayersFromControllers(GatheredP1, GatheredP2))
+	/*if (!GatherReadyMatchPlayersFromControllers(GatheredP1, GatheredP2))
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[MatchCache] Failed - GatherReadyMatchPlayersFromControllers failed"));
+		RoundP1PS = nullptr;
+		RoundP2PS = nullptr;
+		return false;
+	}*/
+	// Day19. PvE에서는 참가자 캐시가 Bot 포함으로 잡히도록 BuildMatchParticipants 함수 기반으로 수정)
+	if (!BuildMatchParticipants(GatheredP1, GatheredP2))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[MatchCache] Failed - BuildMatchParticipants failed"));
 		RoundP1PS = nullptr;
 		RoundP2PS = nullptr;
 		return false;
@@ -1911,6 +2019,7 @@ bool AIndianPokerGameModeBase::GetCachedRoundPlayers(
 	return IsValid(OutP1) && IsValid(OutP2);
 }
 
+// 인간 플레이어용 사람2명 찾기 함수
 bool AIndianPokerGameModeBase::GatherReadyMatchPlayersFromControllers(
 	AIndianPokerPlayerState*& OutP1,
 	AIndianPokerPlayerState*& OutP2)
@@ -1989,6 +2098,106 @@ bool AIndianPokerGameModeBase::GatherReadyMatchPlayersFromControllers(
 		*GetNameSafe(OutP2), OutP2 ? OutP2->GetPlayerId() : -1);
 
 	return true;
+}
+
+bool AIndianPokerGameModeBase::BuildMatchParticipants(
+	AIndianPokerPlayerState*& OutP1,
+	AIndianPokerPlayerState*& OutP2)
+{
+	OutP1 = nullptr;
+	OutP2 = nullptr;
+
+	if (!HasAuthority())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[BuildMatchParticipants] Failed - not authority"));
+		return false;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[BuildMatchParticipants] Failed - World is null"));
+		return false;
+	}
+
+	TArray<AIndianPokerPlayerState*> HumanPlayers;
+
+	for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+	{
+		APlayerController* BasePC = It->Get();
+		AIndianPokerPlayerController* PC = Cast<AIndianPokerPlayerController>(BasePC);
+		if (!IsValid(PC))
+		{
+			continue;
+		}
+
+		AIndianPokerPlayerState* PS = PC->GetPlayerState<AIndianPokerPlayerState>();
+		if (!IsValid(PS))
+		{
+			continue;
+		}
+
+		if (PS->GetPlayerId() == INDEX_NONE)
+		{
+			continue;
+		}
+
+		if (HumanPlayers.Contains(PS))
+		{
+			continue;
+		}
+
+		HumanPlayers.Add(PS);
+
+		UE_LOG(LogTemp, Warning, TEXT("[BuildMatchParticipants] Human candidate=%s Ptr=%p Id=%d"),
+			*GetNameSafe(PS), PS, PS->GetPlayerId());
+	}
+
+	if (CurrentMatchMode == EIndianPokerMatchMode::PvP)
+	{
+		if (HumanPlayers.Num() != 2)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[BuildMatchParticipants] PvP failed - HumanPlayers Num=%d"),
+				HumanPlayers.Num());
+			return false;
+		}
+
+		OutP1 = HumanPlayers[0];
+		OutP2 = HumanPlayers[1];
+	}
+	else if (CurrentMatchMode == EIndianPokerMatchMode::PvE)
+	{
+		if (HumanPlayers.Num() < 1)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[BuildMatchParticipants] PvE failed - no human player"));
+			return false;
+		}
+
+		if (!IsValid(BotPlayerState) || !BotPlayerState->IsBot())
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[BuildMatchParticipants] PvE failed - BotPlayerState invalid"));
+			return false;
+		}
+
+		OutP1 = HumanPlayers[0];
+		OutP2 = BotPlayerState;
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[BuildMatchParticipants] Failed - unknown match mode"));
+		return false;
+	}
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("[BuildMatchParticipants] Success | P1=%s Id=%d Bot=%d | P2=%s Id=%d Bot=%d"),
+		*GetNameSafe(OutP1),
+		OutP1 ? OutP1->GetPlayerId() : -1,
+		OutP1 ? (OutP1->IsBot() ? 1 : 0) : 0,
+		*GetNameSafe(OutP2),
+		OutP2 ? OutP2->GetPlayerId() : -1,
+		OutP2 ? (OutP2->IsBot() ? 1 : 0) : 0);
+
+	return IsValid(OutP1) && IsValid(OutP2);
 }
 
 AIndianPokerPlayerController* AIndianPokerGameModeBase::FindControllerByPlayerState(AIndianPokerPlayerState* TargetPS) const
@@ -2190,4 +2399,367 @@ void AIndianPokerGameModeBase::UpdateWorldCardVisuals()
 	P2WorldCard->SetCardValueServer(P2CardValue);
 
 	UE_LOG(LogTemp, Warning, TEXT("[Card] Updated world card visuals | P1=%d, P2=%d"), P1CardValue, P2CardValue);
+}
+
+void AIndianPokerGameModeBase::InitializeMatchModeFromSessionSubsystem()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	UGameInstance* GI = GetGameInstance();
+	if (!GI)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] InitializeMatchModeFromSessionSubsystem - GameInstance is null"));
+		return;
+	}
+
+	UIndianPokerSessionSubsystem* SessionSubsystem = GI->GetSubsystem<UIndianPokerSessionSubsystem>();
+	if (!SessionSubsystem)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] InitializeMatchModeFromSessionSubsystem - SessionSubsystem is null"));
+		return;
+	}
+
+	CurrentMatchMode = SessionSubsystem->GetSelectedMatchMode();
+
+	UE_LOG(LogTemp, Warning, TEXT("[GameMode] CurrentMatchMode = %s"),
+		CurrentMatchMode == EIndianPokerMatchMode::PvE ? TEXT("PvE") : TEXT("PvP"));
+}
+
+//void AIndianPokerGameModeBase::EnsureBotParticipantCreated()
+//{
+//	if (!HasAuthority())
+//	{
+//		return;
+//	}
+//
+//	if (CurrentMatchMode != EIndianPokerMatchMode::PvE)
+//	{
+//		return;
+//	}
+//
+//	if (IsValid(BotPlayerState))
+//	{
+//		return;
+//	}
+//
+//	BotPlayerState = NewObject<AIndianPokerPlayerState>(this, AIndianPokerPlayerState::StaticClass());
+//
+//	if (!BotPlayerState)
+//	{
+//		UE_LOG(LogTemp, Warning, TEXT("[GameMode] Failed to create BotPlayerState"));
+//		return;
+//	}
+//
+//	BotPlayerState->SetPlayerId(999);
+//	BotPlayerState->SetPlayerName(TEXT("Bot"));
+//	BotPlayerState->SetIsBot(true);
+//
+//	UE_LOG(LogTemp, Warning, TEXT("[GameMode] BotPlayerState created. PlayerId=%d Name=%s"),
+//		BotPlayerState->GetPlayerId(),
+//		*BotPlayerState->GetPlayerName());
+//}
+
+void AIndianPokerGameModeBase::EnsureBotParticipantCreated()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	if (CurrentMatchMode != EIndianPokerMatchMode::PvE)
+	{
+		return;
+	}
+
+	if (IsValid(BotPlayerState))
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] EnsureBotParticipantCreated - World is null"));
+		return;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner = this;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	BotPlayerState = World->SpawnActor<AIndianPokerPlayerState>(
+		AIndianPokerPlayerState::StaticClass(),
+		FVector::ZeroVector,
+		FRotator::ZeroRotator,
+		SpawnParams);
+
+	if (!BotPlayerState)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] Failed to spawn BotPlayerState"));
+		return;
+	}
+
+	BotPlayerState->SetPlayerId(9999);
+	BotPlayerState->SetPlayerName(TEXT("Bot"));
+	BotPlayerState->SetIsBot(true);
+
+	UE_LOG(LogTemp, Warning, TEXT("[GameMode] BotPlayerState spawned. PlayerId=%d Name=%s"),
+		BotPlayerState->GetPlayerId(),
+		*BotPlayerState->GetPlayerName());
+}
+
+bool AIndianPokerGameModeBase::IsCurrentActorBot() const
+{
+	if (!IsValid(BotPlayerState))
+	{
+		return false;
+	}
+
+	return AuthCurrentActorPlayerId == BotPlayerState->GetPlayerId();
+}
+
+void AIndianPokerGameModeBase::TryScheduleBotTurn()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	AIndianPokerGameStateBase* GS = GetIndianPokerGameState();
+	if (!GS)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[BotAI] TryScheduleBotTurn failed - GameState is null"));
+		return;
+	}
+
+	if (GS->GetCurrentPhase() != EGamePhase::Betting)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[BotAI] TryScheduleBotTurn skipped - Phase is not Betting"));
+		return;
+	}
+
+	if (!IsCurrentActorBot())
+	{
+		return;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[BotAI] Bot turn detected. Schedule ExecuteBotTurn"));
+
+	GetWorldTimerManager().ClearTimer(BotTurnTimerHandle);
+	GetWorldTimerManager().SetTimer(
+		BotTurnTimerHandle,
+		this,
+		&AIndianPokerGameModeBase::ExecuteBotTurn,
+		1.5f,
+		false
+	);
+}
+
+EBettingActionType AIndianPokerGameModeBase::DecideBotAction(int32& OutRaiseExtra) const
+{
+	OutRaiseExtra = 1;
+
+	if (!IsValid(BotPlayerState))
+	{
+		return EBettingActionType::Fold;
+	}
+
+	const int32 OpponentCard = BotPlayerState->VisibleOpponentCardValue;
+	const int32 RequiredAmount = CalcRequiredToCall(BotPlayerState->GetPlayerId());
+
+	int32 Roll = FMath::RandRange(1, 100);
+
+	UE_LOG(LogTemp, Warning, TEXT("[BotAI] DecideBotAction | OpponentCard=%d Required=%d Roll=%d"),
+		OpponentCard, RequiredAmount, Roll);
+
+	// 콜 필요 없음
+	if (RequiredAmount == 0)
+	{
+		const bool bUseCheckCall = bHasOpeningCheck;
+
+		// 1~2, 10
+		if ((OpponentCard >= 1 && OpponentCard <= 2) || OpponentCard == 10)
+		{
+			if (Roll <= 90)
+			{
+				return EBettingActionType::Raise;
+			}
+			return bUseCheckCall ? EBettingActionType::CheckCall : EBettingActionType::Check;
+		}
+
+		// 3~5
+		if (OpponentCard >= 3 && OpponentCard <= 5)
+		{
+			if (Roll <= 70)
+			{
+				return EBettingActionType::Raise;
+			}
+			return bUseCheckCall ? EBettingActionType::CheckCall : EBettingActionType::Check;
+		}
+
+		// 6~7
+		if (OpponentCard >= 6 && OpponentCard <= 7)
+		{
+			if (Roll <= 30)
+			{
+				return EBettingActionType::Raise;
+			}
+			return bUseCheckCall ? EBettingActionType::CheckCall : EBettingActionType::Check;
+		}
+
+		// 8~9
+		if (OpponentCard >= 8 && OpponentCard <= 9)
+		{
+			if (Roll <= 10)
+			{
+				return EBettingActionType::Raise;
+			}
+			return bUseCheckCall ? EBettingActionType::CheckCall : EBettingActionType::Check;
+		}
+
+		return bUseCheckCall ? EBettingActionType::CheckCall : EBettingActionType::Check;
+	}
+
+	// 콜 필요 있음
+	// 1~2, 10 : Raise 80 / Call 15 / Fold 5
+	if ((OpponentCard >= 1 && OpponentCard <= 2) || OpponentCard == 10)
+	{
+		if (Roll <= 80) return EBettingActionType::Raise;
+		if (Roll <= 95) return EBettingActionType::Call;
+		return EBettingActionType::Fold;
+	}
+
+	// 3~5 : Raise 55 / Call 30 / Fold 15
+	if (OpponentCard >= 3 && OpponentCard <= 5)
+	{
+		if (Roll <= 55) return EBettingActionType::Raise;
+		if (Roll <= 85) return EBettingActionType::Call;
+		return EBettingActionType::Fold;
+	}
+
+	// 6~7 : Raise 15 / Call 40 / Fold 45
+	if (OpponentCard >= 6 && OpponentCard <= 7)
+	{
+		if (Roll <= 15) return EBettingActionType::Raise;
+		if (Roll <= 55) return EBettingActionType::Call;
+		return EBettingActionType::Fold;
+	}
+
+	// 8~9 : Raise 5 / Call 25 / Fold 70
+	if (OpponentCard >= 8 && OpponentCard <= 9)
+	{
+		if (Roll <= 5) return EBettingActionType::Raise;
+		if (Roll <= 30) return EBettingActionType::Call;
+		return EBettingActionType::Fold;
+	}
+
+	return EBettingActionType::Fold;
+}
+
+void AIndianPokerGameModeBase::ExecuteBotTurn()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	AIndianPokerGameStateBase* GS = GetIndianPokerGameState();
+	if (!GS || GS->GetCurrentPhase() != EGamePhase::Betting)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[BotAI] ExecuteBotTurn aborted - not in Betting phase"));
+		return;
+	}
+
+	if (!IsCurrentActorBot())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[BotAI] ExecuteBotTurn aborted - current actor is not bot"));
+		return;
+	}
+
+	AIndianPokerPlayerState* P1 = nullptr;
+	AIndianPokerPlayerState* P2 = nullptr;
+	if (!GetCachedRoundPlayers(P1, P2))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[BotAI] ExecuteBotTurn failed - GetCachedRoundPlayers failed"));
+		return;
+	}
+
+	AIndianPokerPlayerState* BotPS = nullptr;
+	AIndianPokerPlayerState* OpponentPS = nullptr;
+
+	if (P1 && P1->IsBot())
+	{
+		BotPS = P1;
+		OpponentPS = P2;
+	}
+	else if (P2 && P2->IsBot())
+	{
+		BotPS = P2;
+		OpponentPS = P1;
+	}
+
+	if (!BotPS || !OpponentPS)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[BotAI] ExecuteBotTurn failed - BotPS or OpponentPS invalid"));
+		return;
+	}
+
+	int32 RaiseExtra = 1;
+	EBettingActionType ChosenAction = DecideBotAction(RaiseExtra);
+
+	UE_LOG(LogTemp, Warning, TEXT("[BotAI] ChosenAction=%s RaiseExtra=%d"),
+		*StaticEnum<EBettingActionType>()->GetNameStringByValue((int64)ChosenAction),
+		RaiseExtra);
+
+	bool bSuccess = false;
+
+	switch (ChosenAction)
+	{
+	case EBettingActionType::Check:
+		bSuccess = HandleAction_Check(BotPS, OpponentPS);
+		break;
+
+	case EBettingActionType::CheckCall:
+		bSuccess = HandleAction_CheckCall(BotPS, OpponentPS);
+		break;
+
+	case EBettingActionType::Call:
+		bSuccess = HandleAction_Call(BotPS, OpponentPS);
+		break;
+
+	case EBettingActionType::Raise:
+		bSuccess = HandleAction_Raise(BotPS, OpponentPS, RaiseExtra);
+		if (!bSuccess)
+		{
+			// Raise 실패 시 대체 행동
+			if (CalcRequiredToCall(BotPS->GetPlayerId()) == 0)
+			{
+				bSuccess = bHasOpeningCheck
+					? HandleAction_CheckCall(BotPS, OpponentPS)
+					: HandleAction_Check(BotPS, OpponentPS);
+			}
+			else
+			{
+				bSuccess = HandleAction_Call(BotPS, OpponentPS);
+				if (!bSuccess)
+				{
+					bSuccess = HandleAction_Fold(BotPS, OpponentPS);
+				}
+			}
+		}
+		break;
+
+	case EBettingActionType::Fold:
+		bSuccess = HandleAction_Fold(BotPS, OpponentPS);
+		break;
+
+	default:
+		break;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[BotAI] ExecuteBotTurn result = %s"),
+		bSuccess ? TEXT("Success") : TEXT("Failed"));
 }

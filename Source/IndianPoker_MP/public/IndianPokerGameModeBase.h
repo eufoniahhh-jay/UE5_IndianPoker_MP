@@ -6,6 +6,7 @@
 #include "GameFramework/GameModeBase.h"
 #include "IndianPokerGameStateBase.h"
 #include "BettingTypes.h"
+#include "IndianPokerMatchTypes.h"
 #include "IndianPokerGameModeBase.generated.h"
 
 class AIndianPokerGameStateBase;
@@ -202,7 +203,14 @@ public:
 	);
 
 	// Day18. 실제 월드의 PlayerController를 기준으로 준비된 플레이어 2명을 모으는 헬퍼 함수
+	// -> 인간 플레이어용 사람2명 찾기 함수
 	bool GatherReadyMatchPlayersFromControllers(
+		AIndianPokerPlayerState*& OutP1,
+		AIndianPokerPlayerState*& OutP2
+	);
+
+	// Day19. 최종 매치 참가자 구성 (PvP: 인간 2명 / PvE: 인간 1명 + Bot 1명)
+	bool BuildMatchParticipants(
 		AIndianPokerPlayerState*& OutP1,
 		AIndianPokerPlayerState*& OutP2
 	);
@@ -239,4 +247,30 @@ protected:
 
 	// 실제 월드 갱신 함수
 	void UpdateWorldCardVisuals();
+
+protected:
+	// Day19. GameMode에 현재 MatchMode 변수 추가
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Match")
+	EIndianPokerMatchMode CurrentMatchMode = EIndianPokerMatchMode::PvP;
+
+	// (매치모드 위해) 초기화 함수
+	void InitializeMatchModeFromSessionSubsystem();
+
+protected:
+	// Bot용 PlayerState 참조
+	UPROPERTY()
+	AIndianPokerPlayerState* BotPlayerState = nullptr;
+
+	// Bot 생성 함수. 현재 MatchMode가 PvE인지 보고 BotPlayerState가 없으면 생성
+	void EnsureBotParticipantCreated();
+
+protected:
+	// Day19. Bot AI 위한 멤버
+	FTimerHandle BotTurnTimerHandle;
+
+	bool IsCurrentActorBot() const;	// 현재 턴 주체가 Bot인지 확인
+	void TryScheduleBotTurn();		// 현재 Bot 턴이면 딜레이 걸고 실행 예약
+	void ExecuteBotTurn();			// 실제로 Bot 액션 결정 후 실행
+
+	EBettingActionType DecideBotAction(int32& OutRaiseExtra) const;
 };

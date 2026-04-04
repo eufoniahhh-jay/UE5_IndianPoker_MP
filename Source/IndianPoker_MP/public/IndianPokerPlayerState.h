@@ -45,4 +45,15 @@ public:
 	// Replicated -> 서버가 값을 바꾸면 클라이언트에도 동기화되게 하기 위함
 	UPROPERTY(Replicated, BlueprintReadOnly, Category = "IndianPoker|Betting")
 	int32 CurrentRoundContribution = 0;
+
+protected:
+	// Day19. Bot(PvE) 생성(가짜 플레이어. 일단 지금은 GameMode 내부에서 쓰는 매치 참가자용 상태 객체라는 인식)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Bot")
+	bool bIsBot = false;
+
+public:
+	UFUNCTION(BlueprintPure, Category = "Bot")
+	bool IsBot() const { return bIsBot; }
+
+	void SetIsBot(bool bInIsBot) { bIsBot = bInIsBot; }
 };

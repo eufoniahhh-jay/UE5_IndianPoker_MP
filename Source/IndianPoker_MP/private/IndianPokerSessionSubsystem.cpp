@@ -605,3 +605,15 @@ void UIndianPokerSessionSubsystem::RequestHostLobby()
 		}
 	}
 }
+
+void UIndianPokerSessionSubsystem::SetSelectedMatchMode(EIndianPokerMatchMode NewMode)
+{
+	SelectedMatchMode = NewMode;
+	UE_LOG(LogTemp, Warning, TEXT("[SessionSubsystem] SelectedMatchMode set to %s"),
+		NewMode == EIndianPokerMatchMode::PvE ? TEXT("PvE") : TEXT("PvP"));
+}
+
+EIndianPokerMatchMode UIndianPokerSessionSubsystem::GetSelectedMatchMode() const
+{
+	return SelectedMatchMode;
+}

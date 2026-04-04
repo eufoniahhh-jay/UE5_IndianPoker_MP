@@ -6,6 +6,7 @@
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Interfaces/OnlineSessionInterface.h"
 #include "OnlineSessionSettings.h"
+#include "IndianPokerMatchTypes.h"
 #include "IndianPokerSessionSubsystem.generated.h"
 
 USTRUCT(BlueprintType)
@@ -135,4 +136,16 @@ public:
 	// Day8 핵심 함수. WBP_MainMenuAdvanced에서 host 버튼을 누르면 이거랑 연결할거임
 	UFUNCTION(BlueprintCallable)
 	void RequestHostLobby();
+
+private:
+	// Day19. 매치모드(PVP or PVE)
+	UPROPERTY()
+	EIndianPokerMatchMode SelectedMatchMode = EIndianPokerMatchMode::PvP;
+
+public:
+	UFUNCTION(BlueprintCallable, Category = "Session")
+	void SetSelectedMatchMode(EIndianPokerMatchMode NewMode);
+
+	UFUNCTION(BlueprintPure, Category = "Session")
+	EIndianPokerMatchMode GetSelectedMatchMode() const;
 };

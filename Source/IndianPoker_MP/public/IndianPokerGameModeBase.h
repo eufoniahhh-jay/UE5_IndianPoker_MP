@@ -18,6 +18,17 @@ class ACardActor;
 // 여기서는 GameState 헤더 include를 cpp에서 하고 forward 선언만 둠.
 // enum class EGamePhase : uint8;
 
+// Day20. Bot AI 개선. 공격성 등급 enum
+UENUM()
+enum class EBotAggressionTier : uint8
+{
+	VeryAggressive,
+	Aggressive,
+	Neutral,
+	Defensive,
+	VeryDefensive
+};
+
 UCLASS()
 class INDIANPOKER_MP_API AIndianPokerGameModeBase : public AGameModeBase
 {
@@ -270,7 +281,30 @@ protected:
 
 	bool IsCurrentActorBot() const;	// 현재 턴 주체가 Bot인지 확인
 	void TryScheduleBotTurn();		// 현재 Bot 턴이면 딜레이 걸고 실행 예약
-	void ExecuteBotTurn();			// 실제로 Bot 액션 결정 후 실행
+	void ExecuteBotTurn();			// 실제로 Bot 액션 결정 후 실행. Day20에서 수정
 
+	// Day19 -> Day20에서 수정 (Bot AI 개선)
+	// 점수 계산 -> 공격성 티어 결정 -> Raise 가능 판단+RAise Extra 계산 -> RequiredToCall>0, ==0 에 따라서 확률 처리
 	EBettingActionType DecideBotAction(int32& OutRaiseExtra) const;
+
+protected:
+	// Day20. PlayerStart 위치 고정
+	virtual AActor* ChoosePlayerStart_Implementation(AController* Player) override;
+
+	// Bot AI 개선용 함수 (카드점수/압박점수/칩점수)
+	int32 GetBotCardAggressionScore(int32 OpponentCard) const;
+	int32 GetBotPressureAggressionScore(int32 RequiredAmount) const;
+	int32 GetBotChipAggressionScore(int32 BotChips) const;
+
+	// 최종 공격성 점수 판단
+	int32 CalculateBotAggressionScore(int32 OpponentCard, int32 RequiredAmount, int32 BotChips) const;
+	// 점수 -> 공격성 티어 변환
+	EBotAggressionTier GetBotAggressionTierFromScore(int32 AggressionScore) const;
+
+	// 특정 RaiseExtra 가능 여부 
+	bool CanBotRaiseWithExtra(AIndianPokerPlayerState* BotPS, AIndianPokerPlayerState* OpponentPS, int32 RaiseExtra) const;
+	// 현재 가능한 최대 RaiseExtra
+	int32 GetBotMaxRaiseExtra(AIndianPokerPlayerState* BotPS, AIndianPokerPlayerState* OpponentPS) const;
+	// RaiseExtra 결정 함수 (Raise가 이미 선택된 뒤에만 호출될 함수)
+	int32 DecideBotRaiseExtra(EBotAggressionTier AggressionTier, int32 MaxRaiseExtra) const;
 };

@@ -13,6 +13,7 @@
 #include "CardActor.h"
 #include "Kismet/GameplayStatics.h"
 #include "IndianPokerSessionSubsystem.h"
+#include "GameFramework/PlayerStart.h"
 
 AIndianPokerGameModeBase::AIndianPokerGameModeBase()
 {
@@ -2558,107 +2559,429 @@ void AIndianPokerGameModeBase::TryScheduleBotTurn()
 	);
 }
 
+//EBettingActionType AIndianPokerGameModeBase::DecideBotAction(int32& OutRaiseExtra) const
+//{
+//	OutRaiseExtra = 1;
+//
+//	if (!IsValid(BotPlayerState))
+//	{
+//		return EBettingActionType::Fold;
+//	}
+//
+//	const int32 OpponentCard = BotPlayerState->VisibleOpponentCardValue;
+//	const int32 RequiredAmount = CalcRequiredToCall(BotPlayerState->GetPlayerId());
+//
+//	int32 Roll = FMath::RandRange(1, 100);
+//
+//	UE_LOG(LogTemp, Warning, TEXT("[BotAI] DecideBotAction | OpponentCard=%d Required=%d Roll=%d"),
+//		OpponentCard, RequiredAmount, Roll);
+//
+//	// 콜 필요 없음
+//	if (RequiredAmount == 0)
+//	{
+//		const bool bUseCheckCall = bHasOpeningCheck;
+//
+//		// 1~2, 10
+//		if ((OpponentCard >= 1 && OpponentCard <= 2) || OpponentCard == 10)
+//		{
+//			if (Roll <= 90)
+//			{
+//				return EBettingActionType::Raise;
+//			}
+//			return bUseCheckCall ? EBettingActionType::CheckCall : EBettingActionType::Check;
+//		}
+//
+//		// 3~5
+//		if (OpponentCard >= 3 && OpponentCard <= 5)
+//		{
+//			if (Roll <= 70)
+//			{
+//				return EBettingActionType::Raise;
+//			}
+//			return bUseCheckCall ? EBettingActionType::CheckCall : EBettingActionType::Check;
+//		}
+//
+//		// 6~7
+//		if (OpponentCard >= 6 && OpponentCard <= 7)
+//		{
+//			if (Roll <= 30)
+//			{
+//				return EBettingActionType::Raise;
+//			}
+//			return bUseCheckCall ? EBettingActionType::CheckCall : EBettingActionType::Check;
+//		}
+//
+//		// 8~9
+//		if (OpponentCard >= 8 && OpponentCard <= 9)
+//		{
+//			if (Roll <= 10)
+//			{
+//				return EBettingActionType::Raise;
+//			}
+//			return bUseCheckCall ? EBettingActionType::CheckCall : EBettingActionType::Check;
+//		}
+//
+//		return bUseCheckCall ? EBettingActionType::CheckCall : EBettingActionType::Check;
+//	}
+//
+//	// 콜 필요 있음
+//	// 1~2, 10 : Raise 80 / Call 15 / Fold 5
+//	if ((OpponentCard >= 1 && OpponentCard <= 2) || OpponentCard == 10)
+//	{
+//		if (Roll <= 80) return EBettingActionType::Raise;
+//		if (Roll <= 95) return EBettingActionType::Call;
+//		return EBettingActionType::Fold;
+//	}
+//
+//	// 3~5 : Raise 55 / Call 30 / Fold 15
+//	if (OpponentCard >= 3 && OpponentCard <= 5)
+//	{
+//		if (Roll <= 55) return EBettingActionType::Raise;
+//		if (Roll <= 85) return EBettingActionType::Call;
+//		return EBettingActionType::Fold;
+//	}
+//
+//	// 6~7 : Raise 15 / Call 40 / Fold 45
+//	if (OpponentCard >= 6 && OpponentCard <= 7)
+//	{
+//		if (Roll <= 15) return EBettingActionType::Raise;
+//		if (Roll <= 55) return EBettingActionType::Call;
+//		return EBettingActionType::Fold;
+//	}
+//
+//	// 8~9 : Raise 5 / Call 25 / Fold 70
+//	if (OpponentCard >= 8 && OpponentCard <= 9)
+//	{
+//		if (Roll <= 5) return EBettingActionType::Raise;
+//		if (Roll <= 30) return EBettingActionType::Call;
+//		return EBettingActionType::Fold;
+//	}
+//
+//	return EBettingActionType::Fold;
+//}
+
+// Day20. Bot AI 개선
 EBettingActionType AIndianPokerGameModeBase::DecideBotAction(int32& OutRaiseExtra) const
 {
-	OutRaiseExtra = 1;
+	OutRaiseExtra = 0;
 
 	if (!IsValid(BotPlayerState))
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[BotAI] DecideBotAction failed - BotPlayerState invalid"));
 		return EBettingActionType::Fold;
 	}
 
-	const int32 OpponentCard = BotPlayerState->VisibleOpponentCardValue;
-	const int32 RequiredAmount = CalcRequiredToCall(BotPlayerState->GetPlayerId());
-
-	int32 Roll = FMath::RandRange(1, 100);
-
-	UE_LOG(LogTemp, Warning, TEXT("[BotAI] DecideBotAction | OpponentCard=%d Required=%d Roll=%d"),
-		OpponentCard, RequiredAmount, Roll);
-
-	// 콜 필요 없음
-	if (RequiredAmount == 0)
+	AIndianPokerPlayerState* P1 = nullptr;
+	AIndianPokerPlayerState* P2 = nullptr;
+	if (!const_cast<AIndianPokerGameModeBase*>(this)->GetCachedRoundPlayers(P1, P2))
 	{
-		const bool bUseCheckCall = bHasOpeningCheck;
+		UE_LOG(LogTemp, Warning, TEXT("[BotAI] DecideBotAction failed - GetCachedRoundPlayers failed"));
+		return EBettingActionType::Fold;
+	}
 
-		// 1~2, 10
-		if ((OpponentCard >= 1 && OpponentCard <= 2) || OpponentCard == 10)
+	AIndianPokerPlayerState* BotPS = nullptr;
+	AIndianPokerPlayerState* OpponentPS = nullptr;
+
+	if (P1 && P1->IsBot())
+	{
+		BotPS = P1;
+		OpponentPS = P2;
+	}
+	else if (P2 && P2->IsBot())
+	{
+		BotPS = P2;
+		OpponentPS = P1;
+	}
+
+	if (!BotPS || !OpponentPS)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[BotAI] DecideBotAction failed - BotPS or OpponentPS invalid"));
+		return EBettingActionType::Fold;
+	}
+
+	const int32 OpponentCard = BotPS->VisibleOpponentCardValue;
+	const int32 RequiredAmount = CalcRequiredToCall(BotPS->GetPlayerId());
+	const int32 BotChips = BotPS->Chips;
+
+	const int32 AggressionScore = CalculateBotAggressionScore(OpponentCard, RequiredAmount, BotChips);
+	const EBotAggressionTier AggressionTier = GetBotAggressionTierFromScore(AggressionScore);
+
+	const int32 MaxRaiseExtra = GetBotMaxRaiseExtra(BotPS, OpponentPS);
+	const bool bCanRaise = (MaxRaiseExtra > 0);
+	const bool bCanCall = (RequiredAmount > 0 && BotChips >= RequiredAmount);
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("[BotAI] DecideBotAction | OpponentCard=%d Required=%d BotChips=%d Score=%d Tier=%d MaxRaiseExtra=%d CanRaise=%d CanCall=%d bHasOpeningCheck=%d"),
+		OpponentCard,
+		RequiredAmount,
+		BotChips,
+		AggressionScore,
+		static_cast<int32>(AggressionTier),
+		MaxRaiseExtra,
+		bCanRaise ? 1 : 0,
+		bCanCall ? 1 : 0,
+		bHasOpeningCheck ? 1 : 0);
+
+	int32 RaiseWeight = 0;
+	int32 CallWeight = 0;
+	int32 FoldWeight = 0;
+	int32 PassiveWeight = 0; // Check or CheckCall
+
+	if (RequiredAmount <= 0)
+	{
+		switch (AggressionTier)
 		{
-			if (Roll <= 90)
+		case EBotAggressionTier::VeryAggressive:
+			RaiseWeight = 75;
+			PassiveWeight = 25;
+			break;
+
+		case EBotAggressionTier::Aggressive:
+			RaiseWeight = 55;
+			PassiveWeight = 45;
+			break;
+
+		case EBotAggressionTier::Neutral:
+			RaiseWeight = 30;
+			PassiveWeight = 70;
+			break;
+
+		case EBotAggressionTier::Defensive:
+			RaiseWeight = 10;
+			PassiveWeight = 90;
+			break;
+
+		case EBotAggressionTier::VeryDefensive:
+			RaiseWeight = 3;
+			PassiveWeight = 97;
+			break;
+
+		default:
+			PassiveWeight = 100;
+			break;
+		}
+
+		if (!bCanRaise)
+		{
+			RaiseWeight = 0;
+			PassiveWeight = 100;
+		}
+
+		const int32 TotalWeight = RaiseWeight + PassiveWeight;
+		const int32 Roll = FMath::RandRange(1, TotalWeight);
+
+		UE_LOG(LogTemp, Warning,
+			TEXT("[BotAI] NoCallNeeded Weights | Raise=%d Passive=%d Roll=%d"),
+			RaiseWeight,
+			PassiveWeight,
+			Roll);
+
+		if (Roll <= RaiseWeight)
+		{
+			OutRaiseExtra = DecideBotRaiseExtra(AggressionTier, MaxRaiseExtra);
+			if (OutRaiseExtra > 0)
 			{
 				return EBettingActionType::Raise;
 			}
-			return bUseCheckCall ? EBettingActionType::CheckCall : EBettingActionType::Check;
 		}
 
-		// 3~5
-		if (OpponentCard >= 3 && OpponentCard <= 5)
+		return bHasOpeningCheck ? EBettingActionType::CheckCall : EBettingActionType::Check;
+	}
+
+	// RequiredAmount > 0
+	switch (AggressionTier)
+	{
+	case EBotAggressionTier::VeryAggressive:
+		RaiseWeight = 55;
+		CallWeight = 35;
+		FoldWeight = 10;
+		break;
+
+	case EBotAggressionTier::Aggressive:
+		RaiseWeight = 35;
+		CallWeight = 45;
+		FoldWeight = 20;
+		break;
+
+	case EBotAggressionTier::Neutral:
+		RaiseWeight = 18;
+		CallWeight = 47;
+		FoldWeight = 35;
+		break;
+
+	case EBotAggressionTier::Defensive:
+		RaiseWeight = 7;
+		CallWeight = 38;
+		FoldWeight = 55;
+		break;
+
+	case EBotAggressionTier::VeryDefensive:
+		RaiseWeight = 2;
+		CallWeight = 23;
+		FoldWeight = 75;
+		break;
+
+	default:
+		CallWeight = 50;
+		FoldWeight = 50;
+		break;
+	}
+
+	if (!bCanRaise)
+	{
+		RaiseWeight = 0;
+	}
+
+	if (!bCanCall)
+	{
+		CallWeight = 0;
+	}
+
+	// 둘 다 불가능하면 Fold 강제
+	if (RaiseWeight == 0 && CallWeight == 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[BotAI] Neither Raise nor Call available -> Fold forced"));
+		return EBettingActionType::Fold;
+	}
+
+	const int32 TotalWeight = RaiseWeight + CallWeight + FoldWeight;
+	const int32 Roll = FMath::RandRange(1, TotalWeight);
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("[BotAI] CallNeeded Weights | Raise=%d Call=%d Fold=%d Roll=%d"),
+		RaiseWeight,
+		CallWeight,
+		FoldWeight,
+		Roll);
+
+	if (Roll <= RaiseWeight)
+	{
+		OutRaiseExtra = DecideBotRaiseExtra(AggressionTier, MaxRaiseExtra);
+		if (OutRaiseExtra > 0)
 		{
-			if (Roll <= 70)
-			{
-				return EBettingActionType::Raise;
-			}
-			return bUseCheckCall ? EBettingActionType::CheckCall : EBettingActionType::Check;
+			return EBettingActionType::Raise;
 		}
 
-		// 6~7
-		if (OpponentCard >= 6 && OpponentCard <= 7)
+		UE_LOG(LogTemp, Warning, TEXT("[BotAI] Raise selected but RaiseExtra invalid -> fallback"));
+	}
+
+	if (Roll <= RaiseWeight + CallWeight)
+	{
+		if (bCanCall)
 		{
-			if (Roll <= 30)
-			{
-				return EBettingActionType::Raise;
-			}
-			return bUseCheckCall ? EBettingActionType::CheckCall : EBettingActionType::Check;
+			return EBettingActionType::Call;
 		}
-
-		// 8~9
-		if (OpponentCard >= 8 && OpponentCard <= 9)
-		{
-			if (Roll <= 10)
-			{
-				return EBettingActionType::Raise;
-			}
-			return bUseCheckCall ? EBettingActionType::CheckCall : EBettingActionType::Check;
-		}
-
-		return bUseCheckCall ? EBettingActionType::CheckCall : EBettingActionType::Check;
-	}
-
-	// 콜 필요 있음
-	// 1~2, 10 : Raise 80 / Call 15 / Fold 5
-	if ((OpponentCard >= 1 && OpponentCard <= 2) || OpponentCard == 10)
-	{
-		if (Roll <= 80) return EBettingActionType::Raise;
-		if (Roll <= 95) return EBettingActionType::Call;
-		return EBettingActionType::Fold;
-	}
-
-	// 3~5 : Raise 55 / Call 30 / Fold 15
-	if (OpponentCard >= 3 && OpponentCard <= 5)
-	{
-		if (Roll <= 55) return EBettingActionType::Raise;
-		if (Roll <= 85) return EBettingActionType::Call;
-		return EBettingActionType::Fold;
-	}
-
-	// 6~7 : Raise 15 / Call 40 / Fold 45
-	if (OpponentCard >= 6 && OpponentCard <= 7)
-	{
-		if (Roll <= 15) return EBettingActionType::Raise;
-		if (Roll <= 55) return EBettingActionType::Call;
-		return EBettingActionType::Fold;
-	}
-
-	// 8~9 : Raise 5 / Call 25 / Fold 70
-	if (OpponentCard >= 8 && OpponentCard <= 9)
-	{
-		if (Roll <= 5) return EBettingActionType::Raise;
-		if (Roll <= 30) return EBettingActionType::Call;
-		return EBettingActionType::Fold;
 	}
 
 	return EBettingActionType::Fold;
 }
 
+//void AIndianPokerGameModeBase::ExecuteBotTurn()
+//{
+//	if (!HasAuthority())
+//	{
+//		return;
+//	}
+//
+//	AIndianPokerGameStateBase* GS = GetIndianPokerGameState();
+//	if (!GS || GS->GetCurrentPhase() != EGamePhase::Betting)
+//	{
+//		UE_LOG(LogTemp, Warning, TEXT("[BotAI] ExecuteBotTurn aborted - not in Betting phase"));
+//		return;
+//	}
+//
+//	if (!IsCurrentActorBot())
+//	{
+//		UE_LOG(LogTemp, Warning, TEXT("[BotAI] ExecuteBotTurn aborted - current actor is not bot"));
+//		return;
+//	}
+//
+//	AIndianPokerPlayerState* P1 = nullptr;
+//	AIndianPokerPlayerState* P2 = nullptr;
+//	if (!GetCachedRoundPlayers(P1, P2))
+//	{
+//		UE_LOG(LogTemp, Warning, TEXT("[BotAI] ExecuteBotTurn failed - GetCachedRoundPlayers failed"));
+//		return;
+//	}
+//
+//	AIndianPokerPlayerState* BotPS = nullptr;
+//	AIndianPokerPlayerState* OpponentPS = nullptr;
+//
+//	if (P1 && P1->IsBot())
+//	{
+//		BotPS = P1;
+//		OpponentPS = P2;
+//	}
+//	else if (P2 && P2->IsBot())
+//	{
+//		BotPS = P2;
+//		OpponentPS = P1;
+//	}
+//
+//	if (!BotPS || !OpponentPS)
+//	{
+//		UE_LOG(LogTemp, Warning, TEXT("[BotAI] ExecuteBotTurn failed - BotPS or OpponentPS invalid"));
+//		return;
+//	}
+//
+//	int32 RaiseExtra = 1;
+//	EBettingActionType ChosenAction = DecideBotAction(RaiseExtra);
+//
+//	UE_LOG(LogTemp, Warning, TEXT("[BotAI] ChosenAction=%s RaiseExtra=%d"),
+//		*StaticEnum<EBettingActionType>()->GetNameStringByValue((int64)ChosenAction),
+//		RaiseExtra);
+//
+//	bool bSuccess = false;
+//
+//	switch (ChosenAction)
+//	{
+//	case EBettingActionType::Check:
+//		bSuccess = HandleAction_Check(BotPS, OpponentPS);
+//		break;
+//
+//	case EBettingActionType::CheckCall:
+//		bSuccess = HandleAction_CheckCall(BotPS, OpponentPS);
+//		break;
+//
+//	case EBettingActionType::Call:
+//		bSuccess = HandleAction_Call(BotPS, OpponentPS);
+//		break;
+//
+//	case EBettingActionType::Raise:
+//		bSuccess = HandleAction_Raise(BotPS, OpponentPS, RaiseExtra);
+//		if (!bSuccess)
+//		{
+//			// Raise 실패 시 대체 행동
+//			if (CalcRequiredToCall(BotPS->GetPlayerId()) == 0)
+//			{
+//				bSuccess = bHasOpeningCheck
+//					? HandleAction_CheckCall(BotPS, OpponentPS)
+//					: HandleAction_Check(BotPS, OpponentPS);
+//			}
+//			else
+//			{
+//				bSuccess = HandleAction_Call(BotPS, OpponentPS);
+//				if (!bSuccess)
+//				{
+//					bSuccess = HandleAction_Fold(BotPS, OpponentPS);
+//				}
+//			}
+//		}
+//		break;
+//
+//	case EBettingActionType::Fold:
+//		bSuccess = HandleAction_Fold(BotPS, OpponentPS);
+//		break;
+//
+//	default:
+//		break;
+//	}
+//
+//	UE_LOG(LogTemp, Warning, TEXT("[BotAI] ExecuteBotTurn result = %s"),
+//		bSuccess ? TEXT("Success") : TEXT("Failed"));
+//}
+
+// Day20. Bot AI 개선 수정
 void AIndianPokerGameModeBase::ExecuteBotTurn()
 {
 	if (!HasAuthority())
@@ -2707,12 +3030,15 @@ void AIndianPokerGameModeBase::ExecuteBotTurn()
 		return;
 	}
 
-	int32 RaiseExtra = 1;
+	int32 RaiseExtra = 0;
 	EBettingActionType ChosenAction = DecideBotAction(RaiseExtra);
 
-	UE_LOG(LogTemp, Warning, TEXT("[BotAI] ChosenAction=%s RaiseExtra=%d"),
+	UE_LOG(LogTemp, Warning,
+		TEXT("[BotAI] ExecuteBotTurn | ChosenAction=%s RaiseExtra=%d BotId=%d OpponentId=%d"),
 		*StaticEnum<EBettingActionType>()->GetNameStringByValue((int64)ChosenAction),
-		RaiseExtra);
+		RaiseExtra,
+		BotPS->GetPlayerId(),
+		OpponentPS->GetPlayerId());
 
 	bool bSuccess = false;
 
@@ -2720,32 +3046,68 @@ void AIndianPokerGameModeBase::ExecuteBotTurn()
 	{
 	case EBettingActionType::Check:
 		bSuccess = HandleAction_Check(BotPS, OpponentPS);
+		if (!bSuccess)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[BotAI] Check failed"));
+		}
 		break;
 
 	case EBettingActionType::CheckCall:
 		bSuccess = HandleAction_CheckCall(BotPS, OpponentPS);
+		if (!bSuccess)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[BotAI] CheckCall failed"));
+		}
 		break;
 
 	case EBettingActionType::Call:
 		bSuccess = HandleAction_Call(BotPS, OpponentPS);
+		if (!bSuccess)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[BotAI] Call failed -> fallback Fold"));
+			bSuccess = HandleAction_Fold(BotPS, OpponentPS);
+		}
 		break;
 
 	case EBettingActionType::Raise:
 		bSuccess = HandleAction_Raise(BotPS, OpponentPS, RaiseExtra);
+
 		if (!bSuccess)
 		{
-			// Raise 실패 시 대체 행동
-			if (CalcRequiredToCall(BotPS->GetPlayerId()) == 0)
+			UE_LOG(LogTemp, Warning,
+				TEXT("[BotAI] Raise failed | RaiseExtra=%d RequiredNow=%d -> fallback start"),
+				RaiseExtra,
+				CalcRequiredToCall(BotPS->GetPlayerId()));
+
+			const int32 RequiredAfterFail = CalcRequiredToCall(BotPS->GetPlayerId());
+
+			if (RequiredAfterFail <= 0)
 			{
-				bSuccess = bHasOpeningCheck
-					? HandleAction_CheckCall(BotPS, OpponentPS)
-					: HandleAction_Check(BotPS, OpponentPS);
+				if (bHasOpeningCheck)
+				{
+					UE_LOG(LogTemp, Warning, TEXT("[BotAI] Raise fallback -> CheckCall"));
+					bSuccess = HandleAction_CheckCall(BotPS, OpponentPS);
+
+					if (!bSuccess)
+					{
+						UE_LOG(LogTemp, Warning, TEXT("[BotAI] CheckCall fallback failed -> Check"));
+						bSuccess = HandleAction_Check(BotPS, OpponentPS);
+					}
+				}
+				else
+				{
+					UE_LOG(LogTemp, Warning, TEXT("[BotAI] Raise fallback -> Check"));
+					bSuccess = HandleAction_Check(BotPS, OpponentPS);
+				}
 			}
 			else
 			{
+				UE_LOG(LogTemp, Warning, TEXT("[BotAI] Raise fallback -> Call attempt"));
 				bSuccess = HandleAction_Call(BotPS, OpponentPS);
+
 				if (!bSuccess)
 				{
+					UE_LOG(LogTemp, Warning, TEXT("[BotAI] Call fallback failed -> Fold"));
 					bSuccess = HandleAction_Fold(BotPS, OpponentPS);
 				}
 			}
@@ -2754,12 +3116,347 @@ void AIndianPokerGameModeBase::ExecuteBotTurn()
 
 	case EBettingActionType::Fold:
 		bSuccess = HandleAction_Fold(BotPS, OpponentPS);
+		if (!bSuccess)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[BotAI] Fold failed"));
+		}
 		break;
 
 	default:
+		UE_LOG(LogTemp, Warning, TEXT("[BotAI] Unknown chosen action"));
 		break;
 	}
 
 	UE_LOG(LogTemp, Warning, TEXT("[BotAI] ExecuteBotTurn result = %s"),
 		bSuccess ? TEXT("Success") : TEXT("Failed"));
+}
+
+AActor* AIndianPokerGameModeBase::ChoosePlayerStart_Implementation(AController* Player)
+{
+	if (!Player)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Spawn] ChoosePlayerStart failed - Player is null"));
+		return Super::ChoosePlayerStart_Implementation(Player);
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Spawn] ChoosePlayerStart failed - World is null"));
+		return Super::ChoosePlayerStart_Implementation(Player);
+	}
+
+	TArray<AActor*> FoundStarts;
+	UGameplayStatics::GetAllActorsOfClass(World, APlayerStart::StaticClass(), FoundStarts);
+
+	if (FoundStarts.Num() == 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Spawn] No PlayerStart found - fallback to Super"));
+		return Super::ChoosePlayerStart_Implementation(Player);
+	}
+
+	AActor* HostStart = nullptr;
+	AActor* GuestStart = nullptr;
+
+	for (AActor* StartActor : FoundStarts)
+	{
+		if (!StartActor)
+		{
+			continue;
+		}
+
+		UE_LOG(LogTemp, Warning, TEXT("[Spawn] Found PlayerStart: %s"), *StartActor->GetName());
+
+		if (StartActor->ActorHasTag(TEXT("P1")))
+		{
+			HostStart = StartActor;
+			UE_LOG(LogTemp, Warning, TEXT("[Spawn] HostStart tag found on %s"), *StartActor->GetName());
+		}
+		else if (StartActor->ActorHasTag(TEXT("P2")))
+		{
+			GuestStart = StartActor;
+			UE_LOG(LogTemp, Warning, TEXT("[Spawn] GuestStart tag found on %s"), *StartActor->GetName());
+		}
+	}
+
+	AIndianPokerPlayerController* IPC = Cast<AIndianPokerPlayerController>(Player);
+
+	// Listen Server에서 로컬 컨트롤러 = Host
+	const bool bIsHostPlayer = (IPC && IPC->IsLocalController());
+
+	if (bIsHostPlayer)
+	{
+		if (HostStart)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[Spawn] Host player -> HostStart"));
+			return HostStart;
+		}
+
+		UE_LOG(LogTemp, Warning, TEXT("[Spawn] HostStart not found - fallback to Super"));
+		return Super::ChoosePlayerStart_Implementation(Player);
+	}
+
+	// 나머지는 GuestStart
+	if (GuestStart)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Spawn] Guest player -> GuestStart"));
+		return GuestStart;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[Spawn] GuestStart not found - fallback to Super"));
+	return Super::ChoosePlayerStart_Implementation(Player);
+}
+
+int32 AIndianPokerGameModeBase::GetBotCardAggressionScore(int32 OpponentCard) const
+{
+	if ((OpponentCard >= 1 && OpponentCard <= 2) || OpponentCard == 10)
+	{
+		return 3;
+	}
+
+	if (OpponentCard >= 3 && OpponentCard <= 5)
+	{
+		return 1;
+	}
+
+	if (OpponentCard >= 6 && OpponentCard <= 7)
+	{
+		return -1;
+	}
+
+	if (OpponentCard >= 8 && OpponentCard <= 9)
+	{
+		return -3;
+	}
+
+	return 0;
+}
+
+int32 AIndianPokerGameModeBase::GetBotPressureAggressionScore(int32 RequiredAmount) const
+{
+	if (RequiredAmount <= 0)
+	{
+		return 2;
+	}
+
+	if (RequiredAmount == 1)
+	{
+		return 1;
+	}
+
+	if (RequiredAmount == 2)
+	{
+		return -1;
+	}
+
+	return -3;
+}
+
+int32 AIndianPokerGameModeBase::GetBotChipAggressionScore(int32 BotChips) const
+{
+	if (BotChips >= 15)
+	{
+		return 2;
+	}
+
+	if (BotChips >= 10)
+	{
+		return 1;
+	}
+
+	if (BotChips >= 5)
+	{
+		return -1;
+	}
+
+	return -3;
+}
+
+int32 AIndianPokerGameModeBase::CalculateBotAggressionScore(int32 OpponentCard, int32 RequiredAmount, int32 BotChips) const
+{
+	const int32 CardScore = GetBotCardAggressionScore(OpponentCard);
+	const int32 PressureScore = GetBotPressureAggressionScore(RequiredAmount);
+	const int32 ChipScore = GetBotChipAggressionScore(BotChips);
+
+	const int32 AggressionScore = CardScore + PressureScore + ChipScore;
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("[BotAI] Score Calc | OpponentCard=%d CardScore=%d | Required=%d PressureScore=%d | BotChips=%d ChipScore=%d | Total=%d"),
+		OpponentCard,
+		CardScore,
+		RequiredAmount,
+		PressureScore,
+		BotChips,
+		ChipScore,
+		AggressionScore);
+
+	return AggressionScore;
+}
+
+EBotAggressionTier AIndianPokerGameModeBase::GetBotAggressionTierFromScore(int32 AggressionScore) const
+{
+	if (AggressionScore >= 5)
+	{
+		return EBotAggressionTier::VeryAggressive;
+	}
+
+	if (AggressionScore >= 2)
+	{
+		return EBotAggressionTier::Aggressive;
+	}
+
+	if (AggressionScore >= -1)
+	{
+		return EBotAggressionTier::Neutral;
+	}
+
+	if (AggressionScore >= -4)
+	{
+		return EBotAggressionTier::Defensive;
+	}
+
+	return EBotAggressionTier::VeryDefensive;
+}
+
+bool AIndianPokerGameModeBase::CanBotRaiseWithExtra(AIndianPokerPlayerState* BotPS, AIndianPokerPlayerState* OpponentPS, int32 RaiseExtra) const
+{
+	if (!BotPS || !OpponentPS)
+	{
+		return false;
+	}
+
+	if (RaiseExtra < 1)
+	{
+		return false;
+	}
+
+	const int32 RequiredAmount = CalcRequiredToCall(BotPS->GetPlayerId());
+	const int32 TotalPay = RequiredAmount + RaiseExtra;
+
+	if (BotPS->Chips < TotalPay)
+	{
+		return false;
+	}
+
+	const int32 MyNewContribution = BotPS->CurrentRoundContribution + TotalPay;
+	const int32 OpponentRequiredAfterRaise = MyNewContribution - OpponentPS->CurrentRoundContribution;
+
+	if (OpponentPS->Chips < OpponentRequiredAfterRaise)
+	{
+		return false;
+	}
+
+	return true;
+}
+
+int32 AIndianPokerGameModeBase::GetBotMaxRaiseExtra(AIndianPokerPlayerState* BotPS, AIndianPokerPlayerState* OpponentPS) const
+{
+	if (!BotPS || !OpponentPS)
+	{
+		return 0;
+	}
+
+	for (int32 RaiseExtra = 4; RaiseExtra >= 1; --RaiseExtra)
+	{
+		if (CanBotRaiseWithExtra(BotPS, OpponentPS, RaiseExtra))
+		{
+			return RaiseExtra;
+		}
+	}
+
+	return 0;
+}
+
+int32 AIndianPokerGameModeBase::DecideBotRaiseExtra(EBotAggressionTier AggressionTier, int32 MaxRaiseExtra) const
+{
+	if (MaxRaiseExtra <= 0)
+	{
+		return 0;
+	}
+
+	TArray<int32> CandidateValues;
+	TArray<int32> CandidateWeights;
+
+	auto AddCandidateIfAllowed = [&](int32 RaiseValue, int32 Weight)
+		{
+			if (RaiseValue <= MaxRaiseExtra && Weight > 0)
+			{
+				CandidateValues.Add(RaiseValue);
+				CandidateWeights.Add(Weight);
+			}
+		};
+
+	switch (AggressionTier)
+	{
+	case EBotAggressionTier::VeryAggressive:
+		AddCandidateIfAllowed(1, 10);
+		AddCandidateIfAllowed(2, 20);
+		AddCandidateIfAllowed(3, 30);
+		AddCandidateIfAllowed(4, 40);
+		break;
+
+	case EBotAggressionTier::Aggressive:
+		AddCandidateIfAllowed(1, 15);
+		AddCandidateIfAllowed(2, 30);
+		AddCandidateIfAllowed(3, 35);
+		AddCandidateIfAllowed(4, 20);
+		break;
+
+	case EBotAggressionTier::Neutral:
+		AddCandidateIfAllowed(1, 30);
+		AddCandidateIfAllowed(2, 40);
+		AddCandidateIfAllowed(3, 20);
+		AddCandidateIfAllowed(4, 10);
+		break;
+
+	case EBotAggressionTier::Defensive:
+		AddCandidateIfAllowed(1, 60);
+		AddCandidateIfAllowed(2, 30);
+		AddCandidateIfAllowed(3, 8);
+		AddCandidateIfAllowed(4, 2);
+		break;
+
+	case EBotAggressionTier::VeryDefensive:
+		AddCandidateIfAllowed(1, 85);
+		AddCandidateIfAllowed(2, 13);
+		AddCandidateIfAllowed(3, 2);
+		AddCandidateIfAllowed(4, 0);
+		break;
+
+	default:
+		AddCandidateIfAllowed(1, 100);
+		break;
+	}
+
+	if (CandidateValues.Num() == 0)
+	{
+		return 0;
+	}
+
+	int32 TotalWeight = 0;
+	for (int32 Weight : CandidateWeights)
+	{
+		TotalWeight += Weight;
+	}
+
+	const int32 Roll = FMath::RandRange(1, TotalWeight);
+
+	int32 AccumulatedWeight = 0;
+	for (int32 Index = 0; Index < CandidateValues.Num(); ++Index)
+	{
+		AccumulatedWeight += CandidateWeights[Index];
+		if (Roll <= AccumulatedWeight)
+		{
+			UE_LOG(LogTemp, Warning,
+				TEXT("[BotAI] DecideBotRaiseExtra | Tier=%d MaxRaiseExtra=%d Roll=%d -> RaiseExtra=%d"),
+				static_cast<int32>(AggressionTier),
+				MaxRaiseExtra,
+				Roll,
+				CandidateValues[Index]);
+
+			return CandidateValues[Index];
+		}
+	}
+
+	return CandidateValues.Last();
 }

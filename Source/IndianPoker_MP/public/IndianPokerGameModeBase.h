@@ -47,6 +47,8 @@ protected:
 	// GameState는“상태 보관”이 역할이고,
 	// 플레이어가 들어왔다 이벤트는 GameMode가 책임
 	virtual void PostLogin(APlayerController* NewPlayer) override;
+	// Day21. 이탈 감지
+	virtual void Logout(AController* Exiting) override;
 
 public:
 	// Day5 테스트용: 서버에서만 Phase 진행
@@ -140,6 +142,9 @@ public:
 	// Day10. 
 	bool bRoundEnded = false;
 	bool bHasOpeningCheck = false;
+	// Day21. disconnect 처리 중복 진입 방지
+	bool bHandlingDisconnect = false;
+
 	// 베팅 액션의 메인 진입점
 	void HandlePlayerAction(AIndianPokerPlayerController* RequestingPC, EBettingActionType ActionType, int32 RaiseExtra);
 
@@ -192,6 +197,11 @@ public:
 	void AdvanceAfterRound(float delay);
 	bool IsMatchEnded();
 	void HandleMatchEnd();
+	// Day21. PvP 상대 이탈 시 즉시 종료 처리 (Lobby / GameMap 이탈 처리)
+	void HandleDisconnectInLobby(AIndianPokerPlayerState* ExitingPS);
+	void HandleDisconnectInGame(AIndianPokerPlayerState* ExitingPS);
+	void HandleMatchEndByDisconnect(AIndianPokerPlayerState* WinnerPS, AIndianPokerPlayerState* LeaverPS);
+
 	FTimerHandle NextRoundTimerHandle;
 
 public:

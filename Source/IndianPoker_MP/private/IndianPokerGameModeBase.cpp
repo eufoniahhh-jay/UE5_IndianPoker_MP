@@ -122,6 +122,68 @@ void AIndianPokerGameModeBase::PostLogin(APlayerController* NewPlayer)
 	}*/
 }
 
+void AIndianPokerGameModeBase::Logout(AController* Exiting)
+{
+	AIndianPokerPlayerController* ExitingPC = Cast<AIndianPokerPlayerController>(Exiting);
+	AIndianPokerPlayerState* ExitingPS = ExitingPC
+		? ExitingPC->GetPlayerState<AIndianPokerPlayerState>()
+		: (Exiting ? Exiting->GetPlayerState<AIndianPokerPlayerState>() : nullptr);
+
+	UWorld* World = GetWorld();
+	const FString MapName = World ? World->GetMapName() : TEXT("NoWorld");
+	const float TimeSeconds = World ? World->GetTimeSeconds() : -1.0f;
+
+	const int32 PlayerId = ExitingPS ? ExitingPS->GetPlayerId() : INDEX_NONE;
+	const FString PlayerName = ExitingPS ? ExitingPS->GetPlayerName() : TEXT("UnknownPlayer");
+	const bool bIsBot = ExitingPS ? ExitingPS->IsBot() : false;
+
+	const TCHAR* MatchModeStr =
+		(CurrentMatchMode == EIndianPokerMatchMode::PvE) ? TEXT("PvE") : TEXT("PvP");
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("[Disconnect][Detected] Time=%.2f Map=%s MatchMode=%s Controller=%s PlayerState=%s PlayerId=%d PlayerName=%s IsBot=%d"),
+		TimeSeconds,
+		*MapName,
+		MatchModeStr,
+		*GetNameSafe(Exiting),
+		*GetNameSafe(ExitingPS),
+		PlayerId,
+		*PlayerName,
+		bIsBot ? 1 : 0);
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("[Disconnect][Detected] Before Super::Logout | PlayerArray Num=%d"),
+		GameState ? GameState->PlayerArray.Num() : -1);
+
+	// Day21. LobbyMap 이탈 처리
+	if (ExitingPS
+		&& !bIsBot
+		&& MapName.Contains(TEXT("LobbyMap")))
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("[Disconnect][Detected] LobbyMap human disconnect -> HandleDisconnectInLobby"));
+
+		HandleDisconnectInLobby(ExitingPS);
+	}
+	// Day21. GameMap PvP 상대 이탈 시 즉시 MatchEnd 처리
+	else if (ExitingPS
+		&& !bIsBot
+		&& CurrentMatchMode == EIndianPokerMatchMode::PvP
+		&& MapName.Contains(TEXT("GameMap")))
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("[Disconnect][Detected] GameMap PvP human disconnect -> HandleDisconnectInGame"));
+
+		HandleDisconnectInGame(ExitingPS);
+	}
+
+	Super::Logout(Exiting);
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("[Disconnect][Detected] After Super::Logout | PlayerArray Num=%d"),
+		GameState ? GameState->PlayerArray.Num() : -1);
+}
+
 void AIndianPokerGameModeBase::AdvancePhaseServer()
 {
 	if (!HasAuthority())
@@ -1621,6 +1683,192 @@ void AIndianPokerGameModeBase::HandleMatchEnd()
 	UE_LOG(LogTemp, Warning, TEXT("[MatchEnd] P1 Id=%d Chips=%d | P2 Id=%d Chips=%d"),
 		P1->GetPlayerId(), P1->Chips,
 		P2->GetPlayerId(), P2->Chips);
+}
+
+void AIndianPokerGameModeBase::HandleDisconnectInLobby(AIndianPokerPlayerState* ExitingPS)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	if (!IsValid(ExitingPS))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Disconnect][Lobby] Failed - ExitingPS invalid"));
+		return;
+	}
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("[Disconnect][Lobby] Begin | ExitingId=%d Name=%s"),
+		ExitingPS->GetPlayerId(),
+		*ExitingPS->GetPlayerName());
+
+	// 혹시 남아 있을 수 있는 예약 흐름 제거
+	GetWorldTimerManager().ClearTimer(NextRoundTimerHandle);
+	GetWorldTimerManager().ClearTimer(BotTurnTimerHandle);
+
+	// 라운드 참가자 캐시 정리
+	RoundP1PS = nullptr;
+	RoundP2PS = nullptr;
+
+	// 라운드/턴 관련 상태 정리
+	bRoundEnded = false;
+	bHasOpeningCheck = false;
+
+	AuthFirstActorPlayerId = INDEX_NONE;
+	AuthCurrentActorPlayerId = INDEX_NONE;
+
+	Pot = 0;
+	RoundBet = 0;
+	RequiredToCall = 0;
+
+	// 로비 상태 안내 문구
+	LastActionText = FString::Printf(
+		TEXT("Player %d left the lobby - waiting for players"),
+		ExitingPS->GetPlayerId()
+	);
+
+	SyncRoundStateToGameState();
+	SetPhaseServer(EGamePhase::Lobby);
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("[Disconnect][Lobby] Lobby reset complete | Pot=%d RoundBet=%d RequiredToCall=%d FirstActor=%d CurrentActor=%d"),
+		Pot,
+		RoundBet,
+		RequiredToCall,
+		AuthFirstActorPlayerId,
+		AuthCurrentActorPlayerId);
+
+	const int32 PlayerCountAfter = GameState ? GameState->PlayerArray.Num() : -1;
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("[Disconnect][Lobby] Start unavailable until enough players join again | Current PlayerArray Num=%d"),
+		PlayerCountAfter);
+}
+
+void AIndianPokerGameModeBase::HandleDisconnectInGame(AIndianPokerPlayerState* ExitingPS)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	if (bHandlingDisconnect)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Disconnect][Game] Skip - already handling disconnect"));
+		return;
+	}
+
+	if (!IsValid(ExitingPS))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Disconnect][Game] Failed - ExitingPS invalid"));
+		return;
+	}
+
+	// 이번 단계는 PvP 전용
+	if (CurrentMatchMode != EIndianPokerMatchMode::PvP)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Disconnect][Game] Skip - CurrentMatchMode is not PvP"));
+		return;
+	}
+
+	bHandlingDisconnect = true;
+
+	AIndianPokerPlayerState* CachedP1 = RoundP1PS.Get();
+	AIndianPokerPlayerState* CachedP2 = RoundP2PS.Get();
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("[Disconnect][Game] Begin | ExitingId=%d | CachedP1=%s Id=%d | CachedP2=%s Id=%d"),
+		ExitingPS->GetPlayerId(),
+		*GetNameSafe(CachedP1),
+		CachedP1 ? CachedP1->GetPlayerId() : -1,
+		*GetNameSafe(CachedP2),
+		CachedP2 ? CachedP2->GetPlayerId() : -1);
+
+	AIndianPokerPlayerState* RemainingPS = nullptr;
+
+	if (CachedP1 == ExitingPS)
+	{
+		RemainingPS = CachedP2;
+	}
+	else if (CachedP2 == ExitingPS)
+	{
+		RemainingPS = CachedP1;
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Disconnect][Game] ExitingPS not found in cached round players"));
+	}
+
+	if (!IsValid(RemainingPS))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Disconnect][Game] RemainingPS invalid - fallback cleanup only"));
+
+		GetWorldTimerManager().ClearTimer(NextRoundTimerHandle);
+		GetWorldTimerManager().ClearTimer(BotTurnTimerHandle);
+
+		bRoundEnded = true;
+		AuthCurrentActorPlayerId = INDEX_NONE;
+		LastActionText = TEXT("Opponent disconnected");
+		Pot = 0;
+		RoundBet = 0;
+		RequiredToCall = 0;
+
+		SyncRoundStateToGameState();
+		SetPhaseServer(EGamePhase::MatchEnd);
+		return;
+	}
+
+	HandleMatchEndByDisconnect(RemainingPS, ExitingPS);
+}
+
+void AIndianPokerGameModeBase::HandleMatchEndByDisconnect(
+	AIndianPokerPlayerState* WinnerPS,
+	AIndianPokerPlayerState* LeaverPS)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	if (!IsValid(WinnerPS))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Disconnect][MatchEnd] Failed - WinnerPS invalid"));
+		return;
+	}
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("[Disconnect][MatchEnd] Begin | WinnerId=%d | LeaverId=%d"),
+		WinnerPS->GetPlayerId(),
+		LeaverPS ? LeaverPS->GetPlayerId() : -1);
+
+	// 예약된 후속 흐름 제거
+	GetWorldTimerManager().ClearTimer(NextRoundTimerHandle);
+	GetWorldTimerManager().ClearTimer(BotTurnTimerHandle);
+
+	bRoundEnded = true;
+	bHasOpeningCheck = false;
+	AuthCurrentActorPlayerId = INDEX_NONE;
+
+	// HUD/공용 상태 정리
+	LastActionText = FString::Printf(
+		TEXT("Player %d disconnected - Player %d wins"),
+		LeaverPS ? LeaverPS->GetPlayerId() : -1,
+		WinnerPS->GetPlayerId()
+	);
+
+	Pot = 0;
+	RoundBet = 0;
+	RequiredToCall = 0;
+
+	SyncRoundStateToGameState();
+	SetPhaseServer(EGamePhase::MatchEnd);
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("[Disconnect][MatchEnd] Complete | Phase=MatchEnd | Pot=%d RoundBet=%d RequiredToCall=%d"),
+		Pot,
+		RoundBet,
+		RequiredToCall);
 }
 
 //void AIndianPokerGameModeBase::ResolveFoldRound(

@@ -450,6 +450,7 @@ void UIndianPokerSessionSubsystem::OnDestroySessionComplete(FName SessionName, b
 		bPendingJoinAfterDestroy = false;
 		PendingJoinIndex = INDEX_NONE;
 		bPendingHostAfterDestroy = false;
+		bPendingExitToMainMenuAfterDestroy = false;
 		return;
 	}
 
@@ -465,6 +466,27 @@ void UIndianPokerSessionSubsystem::OnDestroySessionComplete(FName SessionName, b
 			*NetModeToStr(GetWorld()), SavedJoinIndex);
 
 		JoinSessionByIndex(SavedJoinIndex);
+		return;
+	}
+
+	// Day22. pending exit 처리. Exit 대기 중이면 Destroy 후 MainMenu로 이동
+	if (bPendingExitToMainMenuAfterDestroy)
+	{
+		bPendingExitToMainMenuAfterDestroy = false;
+
+		UWorld* World = GetWorld();
+		if (World)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[SessionSub][%s] Destroy complete -> OpenLevel MainMenuMap"),
+				*NetModeToStr(World));
+
+			UGameplayStatics::OpenLevel(World, FName(TEXT("MainMenuMap")));
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("[SessionSub] Destroy complete but World is null during exit"));
+		}
+
 		return;
 	}
 
@@ -604,6 +626,41 @@ void UIndianPokerSessionSubsystem::RequestHostLobby()
 			UE_LOG(LogTemp, Error, TEXT("[SessionSub] RequestHostLobby -> GetWorld() is nullptr"));
 		}
 	}
+}
+
+void UIndianPokerSessionSubsystem::RequestExitToMainMenu()
+{
+	UWorld* World = GetWorld();
+	IOnlineSessionPtr SI = GetSessionInterface();
+
+	UE_LOG(LogTemp, Warning, TEXT("[SessionSub][%s] RequestExitToMainMenu called"),
+		*NetModeToStr(World));
+
+	if (!World)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[SessionSub] RequestExitToMainMenu failed - World is null"));
+		return;
+	}
+
+	// 기존 세션이 살아있으면 먼저 Destroy 후 MainMenu로 이동
+	if (SI.IsValid() && SI->GetNamedSession(NAME_GameSession) != nullptr)
+	{
+		bPendingExitToMainMenuAfterDestroy = true;
+
+		UE_LOG(LogTemp, Warning, TEXT("[SessionSub][%s] RequestExitToMainMenu -> Existing session found, DestroySession first"),
+			*NetModeToStr(World));
+
+		DestroySession();
+		return;
+	}
+
+	// 세션이 없으면 바로 MainMenu로 이동
+	bPendingExitToMainMenuAfterDestroy = false;
+
+	UE_LOG(LogTemp, Warning, TEXT("[SessionSub][%s] RequestExitToMainMenu -> No session, OpenLevel MainMenuMap"),
+		*NetModeToStr(World));
+
+	UGameplayStatics::OpenLevel(World, FName(TEXT("MainMenuMap")));
 }
 
 void UIndianPokerSessionSubsystem::SetSelectedMatchMode(EIndianPokerMatchMode NewMode)

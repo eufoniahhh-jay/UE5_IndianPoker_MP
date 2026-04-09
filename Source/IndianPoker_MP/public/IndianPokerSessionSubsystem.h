@@ -130,12 +130,18 @@ private:
 	bool bPendingCreateSessionInLobby = false;
 	int32 PendingMaxPlayers = 2;
 	bool bPendingLAN = true;
+	// Day22. Exit 전용 플래그
+	bool bPendingExitToMainMenuAfterDestroy = false;
 
 public:
 	void TryCreateSessionAfterLobbyOpened();
 	// Day8 핵심 함수. WBP_MainMenuAdvanced에서 host 버튼을 누르면 이거랑 연결할거임
 	UFUNCTION(BlueprintCallable)
 	void RequestHostLobby();
+
+	// Day22. 로비맵->메인메뉴로 탈출
+	UFUNCTION(BlueprintCallable)
+	void RequestExitToMainMenu();
 
 private:
 	// Day19. 매치모드(PVP or PVE)

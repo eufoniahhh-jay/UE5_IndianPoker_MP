@@ -465,3 +465,34 @@ void AIndianPokerPlayerController::RequestRaise3()
 {
 	Server_RequestAction(EBettingActionType::Raise, 3);
 }
+
+void AIndianPokerPlayerController::RequestReturnToLobby()
+{
+	UE_LOG(LogTemp, Warning, TEXT("[PC] RequestReturnToLobby called | Local=%d | HasAuthority=%d | Name=%s"),
+		IsLocalController() ? 1 : 0,
+		HasAuthority() ? 1 : 0,
+		*GetName());
+
+	Server_RequestReturnToLobby();
+}
+
+void AIndianPokerPlayerController::Server_RequestReturnToLobby_Implementation()
+{
+	//AIndianPokerPlayerState* PS = GetPlayerState<AIndianPokerPlayerState>();
+	APlayerState* PS = GetPlayerState<APlayerState>();
+
+	UE_LOG(LogTemp, Warning, TEXT("[PC][Server] Server_RequestReturnToLobby received | PC=%s | PS=%s | PlayerId=%d"),
+		*GetNameSafe(this),
+		*GetNameSafe(PS),
+		PS ? PS->GetPlayerId() : -1);
+
+	// PlayerController 서버 RPC에서 GameMode 호출 연결
+	AIndianPokerGameModeBase* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AIndianPokerGameModeBase>() : nullptr;
+	if (!GM)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[PC][Server] Server_RequestReturnToLobby failed - GameMode is null"));
+		return;
+	}
+
+	GM->RequestReturnToLobby(this);
+}

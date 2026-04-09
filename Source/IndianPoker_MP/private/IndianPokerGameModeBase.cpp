@@ -3708,3 +3708,69 @@ int32 AIndianPokerGameModeBase::DecideBotRaiseExtra(EBotAggressionTier Aggressio
 
 	return CandidateValues.Last();
 }
+
+void AIndianPokerGameModeBase::RequestReturnToLobby(AIndianPokerPlayerController* RequestingPC)
+{
+	if (!HasAuthority())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ReturnToLobby][GameMode] Blocked - not authority"));
+		return;
+	}
+
+	if (!IsValid(RequestingPC))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ReturnToLobby][GameMode] Failed - RequestingPC invalid"));
+		return;
+	}
+
+	AIndianPokerGameStateBase* GS = GetIndianPokerGameState();
+	if (!GS)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ReturnToLobby][GameMode] Failed - GameState is null"));
+		return;
+	}
+
+	if (GS->GetCurrentPhase() != EGamePhase::MatchEnd)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ReturnToLobby][GameMode] Denied - Phase is not MatchEnd"));
+		return;
+	}
+
+	// Listen Server 기준 Host 판정
+	if (!RequestingPC->HasAuthority())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ReturnToLobby][GameMode] Denied - requester is not host"));
+		return;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[ReturnToLobby][GameMode] Approved - ServerTravel to LobbyMap?listen"));
+
+	// 복귀 직전 최소 상태 정리
+	bHandlingDisconnect = false;
+	bRoundEnded = false;
+	bHasOpeningCheck = false;
+
+	AuthFirstActorPlayerId = INDEX_NONE;
+	AuthCurrentActorPlayerId = INDEX_NONE;
+
+	RoundP1PS = nullptr;
+	RoundP2PS = nullptr;
+
+	Pot = 0;
+	RoundBet = 0;
+	RequiredToCall = 0;
+
+	LastActionText = TEXT("Returned to Lobby");
+
+	SyncRoundStateToGameState();
+	SetPhaseServer(EGamePhase::Lobby);
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ReturnToLobby][GameMode] Failed - World is null"));
+		return;
+	}
+
+	World->ServerTravel(TEXT("/Game/Maps/LobbyMap?listen"));
+}

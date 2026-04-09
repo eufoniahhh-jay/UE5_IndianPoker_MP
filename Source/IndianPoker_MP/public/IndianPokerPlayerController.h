@@ -111,6 +111,13 @@ public:
 	void RequestRaise2();
 	void RequestRaise3();
 
+	// Day22. MatchEnd 후 Host가 로비 복귀를 요청
+	UFUNCTION(BlueprintCallable, Category = "IndianPoker|MatchEnd")
+	void RequestReturnToLobby();
+
+	UFUNCTION(Server, Reliable)
+	void Server_RequestReturnToLobby();
+
 	UPROPERTY(EditDefaultsOnly, Category = "Input|Betting")
 	UInputAction* IA_Check;
 

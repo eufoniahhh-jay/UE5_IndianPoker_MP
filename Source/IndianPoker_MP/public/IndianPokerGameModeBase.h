@@ -317,4 +317,8 @@ protected:
 	int32 GetBotMaxRaiseExtra(AIndianPokerPlayerState* BotPS, AIndianPokerPlayerState* OpponentPS) const;
 	// RaiseExtra 결정 함수 (Raise가 이미 선택된 뒤에만 호출될 함수)
 	int32 DecideBotRaiseExtra(EBotAggressionTier AggressionTier, int32 MaxRaiseExtra) const;
+
+public:
+	// Day22. MatchEnd 후 Host의 로비 복귀 요청 처리
+	void RequestReturnToLobby(AIndianPokerPlayerController* RequestingPC);
 };

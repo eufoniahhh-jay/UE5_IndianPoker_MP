@@ -146,4 +146,15 @@ public:
 
 	UPROPERTY()
 	UUserWidget* MatchHUDWidget;
+
+public:
+	// Day23. HUD 표시용 텍스트
+	UPROPERTY(BlueprintReadOnly, Category = "UI")
+	FString DisplayLastActionText = TEXT("");
+
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	const FString& GetDisplayLastActionText() const { return DisplayLastActionText; }
+
+	UFUNCTION(Client, Reliable)
+	void Client_SetDisplayLastActionText(const FString& InText);
 };

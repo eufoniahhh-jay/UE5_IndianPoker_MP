@@ -144,6 +144,8 @@ public:
 	bool bHasOpeningCheck = false;
 	// Day21. disconnect 처리 중복 진입 방지
 	bool bHandlingDisconnect = false;
+	// Day23. 무승부 이월 여부
+	bool bCarryOverAfterDraw = false;
 
 	// 베팅 액션의 메인 진입점
 	void HandlePlayerAction(AIndianPokerPlayerController* RequestingPC, EBettingActionType ActionType, int32 RaiseExtra);
@@ -321,4 +323,14 @@ protected:
 public:
 	// Day22. MatchEnd 후 Host의 로비 복귀 요청 처리
 	void RequestReturnToLobby(AIndianPokerPlayerController* RequestingPC);
+
+public:
+	// Day23. 관점별 문구 생성 헬퍼
+	FString GetPerspectiveSubject(AIndianPokerPlayerState* ViewerPS, AIndianPokerPlayerState* TargetPS) const;
+
+	void BroadcastLastActionTextToPlayers(
+		const FString& P1Text,
+		const FString& P2Text);
+
+	void BroadcastSameLastActionTextToPlayers(const FString& InText);
 };

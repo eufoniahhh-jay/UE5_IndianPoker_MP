@@ -390,7 +390,11 @@ void AIndianPokerGameModeBase::StartRound()
 	UE_LOG(LogTemp, Warning, TEXT("[Round] New Round Start"));
 
 	CurrentRoundNumber++;
-	LastActionText = FString::Printf(TEXT("Round %d Start"), CurrentRoundNumber);
+	//LastActionText = FString::Printf(TEXT("Round %d Start"), CurrentRoundNumber);
+	// Day23. 공용 LastActionText를 UI용으로 쓰지 말고,바로 각 플레이어에게 표시용 문구를 보내기로 수정.
+	const FString RoundStartText = FString::Printf(TEXT("Round %d Start"), CurrentRoundNumber);
+	BroadcastSameLastActionTextToPlayers(RoundStartText);
+	LastActionText = RoundStartText;
 
 	/*Pot = 2;
 	RoundBet = 1;*/
@@ -823,6 +827,23 @@ void AIndianPokerGameModeBase::ApplyAnte()
 		return;
 	}
 
+	// Day23. 무승부 이월(ante 스킵)
+	if (bCarryOverAfterDraw)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Bet] Carry-over round detected -> skip ante"));
+
+		// 이월 라운드는 기존 Pot 유지
+		// 새 ante 없음
+		// 이번 라운드 contribution은 0에서 시작
+		P1->CurrentRoundContribution = 0;
+		P2->CurrentRoundContribution = 0;
+
+		RoundBet = 0;
+		bCarryOverAfterDraw = false;
+
+		return;
+	}
+
 	UE_LOG(LogTemp, Warning, TEXT("[ApplyAnte] P1=%s Ptr=%p Id=%d ChipsBefore=%d"),
 		*GetNameSafe(P1), P1, P1 ? P1->GetPlayerId() : -1, P1 ? P1->Chips : -1);
 
@@ -1167,7 +1188,25 @@ bool AIndianPokerGameModeBase::HandleAction_Check(
 	UE_LOG(LogTemp, Warning, TEXT("[CheckDebug] Before Sync CurrentActorPlayerId=%d"), AuthCurrentActorPlayerId);
 
 	// Day14
-	LastActionText = FString::Printf(TEXT("Player %d Checked"), RequestingPS->GetPlayerId());
+	//LastActionText = FString::Printf(TEXT("Player %d Checked"), RequestingPS->GetPlayerId());
+
+	/*AIndianPokerPlayerState* P1 = nullptr;
+	AIndianPokerPlayerState* P2 = nullptr;
+	GetCachedRoundPlayers(P1, P2);*/
+
+	// Day23. 공용 LastActionText를 UI용으로 쓰지 말고,바로 각 플레이어에게 표시용 문구를 보내기로 수정.
+	const FString P1Text = FString::Printf(
+		TEXT("%s Checked"),
+		*GetPerspectiveSubject(RoundP1PS, RequestingPS));
+
+	const FString P2Text = FString::Printf(
+		TEXT("%s Checked"),
+		*GetPerspectiveSubject(RoundP2PS, RequestingPS));
+
+	BroadcastLastActionTextToPlayers(P1Text, P2Text);
+
+	// 공용 GameState용은 필요하면 디버그/중립 문구만 유지
+	LastActionText = TEXT("Checked");
 
 	SyncRoundStateToGameState();
 	// Day19. 턴이 BOT에게 넘어가는 시점에서 호출
@@ -1221,7 +1260,20 @@ bool AIndianPokerGameModeBase::HandleAction_CheckCall(
 	AuthCurrentActorPlayerId = INDEX_NONE;
 
 	// Day14. HUD
-	LastActionText = FString::Printf(TEXT("Player %d Check-Called"), RequestingPS->GetPlayerId());
+	//LastActionText = FString::Printf(TEXT("Player %d Check-Called"), RequestingPS->GetPlayerId());
+	// Day23. 공용 LastActionText를 UI용으로 쓰지 말고,바로 각 플레이어에게 표시용 문구를 보내기로 수정.
+	const FString P1Text = FString::Printf(
+		TEXT("%s Check-Called"),
+		*GetPerspectiveSubject(RoundP1PS, RequestingPS));
+
+	const FString P2Text = FString::Printf(
+		TEXT("%s Check-Called"),
+		*GetPerspectiveSubject(RoundP2PS, RequestingPS));
+
+	BroadcastLastActionTextToPlayers(P1Text, P2Text);
+
+	// 공용 GameState용은 필요하면 디버그/중립 문구만 유지
+	LastActionText = TEXT("Check-Called");
 
 	SyncRoundStateToGameState();
 
@@ -1299,11 +1351,24 @@ bool AIndianPokerGameModeBase::HandleAction_Call(
 	AuthCurrentActorPlayerId = INDEX_NONE;
 
 	// Day14. HUD
-	LastActionText = FString::Printf(
+	/*LastActionText = FString::Printf(
 		TEXT("Player %d Called %d"),
 		RequestingPS->GetPlayerId(),
 		RequiredAmount
-	);
+	);*/
+	// Day23. 공용 LastActionText를 UI용으로 쓰지 말고,바로 각 플레이어에게 표시용 문구를 보내기로 수정.
+	const FString P1Text = FString::Printf(
+		TEXT("%s Called %d"),
+		*GetPerspectiveSubject(RoundP1PS, RequestingPS), RequiredAmount);
+
+	const FString P2Text = FString::Printf(
+		TEXT("%s Called %d"),
+		*GetPerspectiveSubject(RoundP2PS, RequestingPS), RequiredAmount);
+
+	BroadcastLastActionTextToPlayers(P1Text, P2Text);
+
+	// 공용 GameState용은 필요하면 디버그/중립 문구만 유지
+	LastActionText = TEXT("Called");
 
 	SyncRoundStateToGameState();
 
@@ -1389,11 +1454,26 @@ bool AIndianPokerGameModeBase::HandleAction_Raise(
 	AuthCurrentActorPlayerId = OpponentPS->GetPlayerId();
 
 	// Day14. HUD
-	LastActionText = FString::Printf(
+	/*LastActionText = FString::Printf(
 		TEXT("Player %d Raised +%d"),
 		RequestingPS->GetPlayerId(),
 		RaiseExtra
-	);
+	);*/
+
+	// Day23. 공용 LastActionText를 UI용으로 쓰지 말고,바로 각 플레이어에게 표시용 문구를 보내기로 수정.
+	const FString P1Text = FString::Printf(
+		TEXT("%s raised by %d."),
+		*GetPerspectiveSubject(RoundP1PS, RequestingPS),
+		RaiseExtra);
+
+	const FString P2Text = FString::Printf(
+		TEXT("%s raised by %d."),
+		*GetPerspectiveSubject(RoundP2PS, RequestingPS),
+		RaiseExtra);
+
+	BroadcastLastActionTextToPlayers(P1Text, P2Text);
+
+	LastActionText = TEXT("Raise");
 
 	SyncRoundStateToGameState();
 	// Day19. 턴이 BOT에게 넘어가는 시점에서 호출
@@ -1474,11 +1554,20 @@ void AIndianPokerGameModeBase::ResolveFoldRound(
 	UE_LOG(LogTemp, Warning, TEXT("[FoldResolve] Round Ended by Fold"));
 
 	// Day14.
-	LastActionText = FString::Printf(
+	/*LastActionText = FString::Printf(
 		TEXT("Player %d Folded - Player %d Wins"),
 		FolderPS->GetPlayerId(),
 		WinnerPS->GetPlayerId()
-	);
+	);*/
+
+	// Day23. 공용 LastActionText를 UI용으로 쓰지 말고,바로 각 플레이어에게 표시용 문구를 보내기로 수정.
+	BroadcastLastActionTextToPlayers(
+		(WinnerPS == RoundP1PS)
+		? TEXT("Opponent folded. You won the round.")
+		: TEXT("You folded. Opponent won the round."),
+		(WinnerPS == RoundP2PS)
+		? TEXT("Opponent folded. You won the round.")
+		: TEXT("You folded. Opponent won the round."));
 
 	UE_LOG(LogTemp, Warning, TEXT("[FoldResolve] Winner=%s Ptr=%p Id=%d ChipsBefore=%d"),
 		*GetNameSafe(WinnerPS), WinnerPS,
@@ -1560,9 +1649,16 @@ void AIndianPokerGameModeBase::ResolveShowdown()
 
 		UE_LOG(LogTemp, Warning, TEXT("[Showdown] Winner=P1 Id=%d Awarded Pot=%d"), P1->GetPlayerId(), Pot);
 		UE_LOG(LogTemp, Warning, TEXT("[Showdown] P1 Chips=%d | P2 Chips=%d"), P1->Chips, P2->Chips);
-		LastActionText = FString::Printf(TEXT("Showdown - Player %d Wins"), P1->GetPlayerId());
+		//LastActionText = FString::Printf(TEXT("Showdown - Player %d Wins"), P1->GetPlayerId());
+		// Day23. 공용 LastActionText를 UI용으로 쓰지 말고,바로 각 플레이어에게 표시용 문구를 보내기로 수정.
+		BroadcastLastActionTextToPlayers(
+			TEXT("You won the showdown."),
+			TEXT("Opponent won the showdown."));
+
+		LastActionText = TEXT("Showdown");
 
 		Pot = 0;
+		bCarryOverAfterDraw = false;
 	}
 	else if (P2Card > P1Card)
 	{
@@ -1570,15 +1666,26 @@ void AIndianPokerGameModeBase::ResolveShowdown()
 
 		UE_LOG(LogTemp, Warning, TEXT("[Showdown] Winner=P2 Id=%d Awarded Pot=%d"), P2->GetPlayerId(), Pot);
 		UE_LOG(LogTemp, Warning, TEXT("[Showdown] P1 Chips=%d | P2 Chips=%d"), P1->Chips, P2->Chips);
-		LastActionText = FString::Printf(TEXT("Showdown - Player %d Wins"), P2->GetPlayerId());
+		//LastActionText = FString::Printf(TEXT("Showdown - Player %d Wins"), P2->GetPlayerId());
+		// Day23. 공용 LastActionText를 UI용으로 쓰지 말고,바로 각 플레이어에게 표시용 문구를 보내기로 수정.
+		BroadcastLastActionTextToPlayers(
+			TEXT("Opponent won the showdown."),
+			TEXT("You won the showdown."));
+
+		LastActionText = TEXT("Showdown");
 
 		Pot = 0;
+		bCarryOverAfterDraw = false;
 	}
 	else
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Showdown] Draw - Pot carries over. Pot=%d"), Pot);
 		UE_LOG(LogTemp, Warning, TEXT("[Showdown] P1 Chips=%d | P2 Chips=%d"), P1->Chips, P2->Chips);
-		LastActionText = TEXT("Showdown - Draw");
+		bCarryOverAfterDraw = true;
+		//LastActionText = TEXT("Showdown - Draw");
+		// Day23. 공용 LastActionText를 UI용으로 쓰지 말고,바로 각 플레이어에게 표시용 문구를 보내기로 수정.
+		BroadcastSameLastActionTextToPlayers(TEXT("Showdown ended in a draw."));
+		LastActionText = TEXT("Showdown Draw");
 	}
 
 	// Day14. Showdown에서 Pot이 0으로 바뀌어도 그 직후 동기화가 없어서 HUD 반영이 늦을 수 있어서 넣어줌
@@ -1649,6 +1756,13 @@ bool AIndianPokerGameModeBase::IsMatchEnded()
 		return false;
 	}
 
+	// Day23. draw carry-over를 고려. (draw 이월 상태면 다음 라운드 허용)
+	if (bCarryOverAfterDraw)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[MatchEnd] Carry-over draw round pending -> do not end match"));
+		return false;
+	}
+
 	return (P1->Chips <= 0 || P2->Chips <= 0);
 }
 
@@ -1672,7 +1786,22 @@ void AIndianPokerGameModeBase::HandleMatchEnd()
 	}
 
 	const int32 WinnerId = (P1->Chips > P2->Chips) ? P1->GetPlayerId() : P2->GetPlayerId();
-	LastActionText = FString::Printf(TEXT("Match End - Player %d Wins"), WinnerId);
+	//LastActionText = FString::Printf(TEXT("Match End - Player %d Wins"), WinnerId);
+	// Day23. 공용 LastActionText를 UI용으로 쓰지 말고,바로 각 플레이어에게 표시용 문구를 보내기로 수정.
+	if (WinnerId == P1->GetPlayerId())
+	{
+		BroadcastLastActionTextToPlayers(
+			TEXT("You won the match."),
+			TEXT("Opponent won the match."));
+	}
+	else
+	{
+		BroadcastLastActionTextToPlayers(
+			TEXT("Opponent won the match."),
+			TEXT("You won the match."));
+	}
+
+	LastActionText = TEXT("Match End");
 
 	AuthCurrentActorPlayerId = INDEX_NONE;
 	SyncRoundStateToGameState();
@@ -3773,4 +3902,45 @@ void AIndianPokerGameModeBase::RequestReturnToLobby(AIndianPokerPlayerController
 	}
 
 	World->ServerTravel(TEXT("/Game/Maps/LobbyMap?listen"));
+}
+
+FString AIndianPokerGameModeBase::GetPerspectiveSubject(
+	AIndianPokerPlayerState* ViewerPS,
+	AIndianPokerPlayerState* TargetPS) const
+{
+	if (!ViewerPS || !TargetPS)
+	{
+		return TEXT("Opponent");
+	}
+
+	return (ViewerPS->GetPlayerId() == TargetPS->GetPlayerId())
+		? TEXT("You")
+		: TEXT("Opponent");
+}
+
+void AIndianPokerGameModeBase::BroadcastLastActionTextToPlayers(
+	const FString& P1Text,
+	const FString& P2Text)
+{
+	AIndianPokerPlayerState* P1 = nullptr;
+	AIndianPokerPlayerState* P2 = nullptr;
+	if (!GetCachedRoundPlayers(P1, P2))
+	{
+		return;
+	}
+
+	if (AIndianPokerPlayerController* PC1 = FindControllerByPlayerState(P1))
+	{
+		PC1->Client_SetDisplayLastActionText(P1Text);
+	}
+
+	if (AIndianPokerPlayerController* PC2 = FindControllerByPlayerState(P2))
+	{
+		PC2->Client_SetDisplayLastActionText(P2Text);
+	}
+}
+
+void AIndianPokerGameModeBase::BroadcastSameLastActionTextToPlayers(const FString& InText)
+{
+	BroadcastLastActionTextToPlayers(InText, InText);
 }

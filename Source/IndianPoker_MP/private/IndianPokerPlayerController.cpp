@@ -496,3 +496,10 @@ void AIndianPokerPlayerController::Server_RequestReturnToLobby_Implementation()
 
 	GM->RequestReturnToLobby(this);
 }
+
+void AIndianPokerPlayerController::Client_SetDisplayLastActionText_Implementation(const FString& InText)
+{
+	DisplayLastActionText = InText;
+
+	UE_LOG(LogTemp, Warning, TEXT("[PC][Client] DisplayLastActionText = %s"), *DisplayLastActionText);
+}

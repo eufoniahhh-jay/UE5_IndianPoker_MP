@@ -157,4 +157,9 @@ public:
 
 	UFUNCTION(Client, Reliable)
 	void Client_SetDisplayLastActionText(const FString& InText);
+
+public:
+	// Day24. 맵마다 카메라 적용을 다르게
+	UFUNCTION()
+	void ApplyMainMenuCamera();
 };

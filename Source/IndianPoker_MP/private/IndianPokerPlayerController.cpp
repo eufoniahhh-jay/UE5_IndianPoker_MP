@@ -18,6 +18,8 @@
 #include "Engine/GameInstance.h"
 #include "Kismet/GameplayStatics.h"
 #include "BettingTypes.h"
+#include "Camera/CameraActor.h"
+#include "TimerManager.h"
 
 void AIndianPokerPlayerController::BeginPlay()
 {
@@ -66,6 +68,21 @@ void AIndianPokerPlayerController::BeginPlay()
 				UE_LOG(LogTemp, Warning, TEXT("[PC] IMC added + Rebuild mappings"));
 			}
 		}
+	}
+
+	// Day24. 카메라 액터 추가(메인맵 전용)
+	if (bLocal && MapName == TEXT("MainMenuMap"))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[PC] MainMenu camera branch entered"));
+
+		FTimerHandle MainMenuCameraTimerHandle;
+		GetWorldTimerManager().SetTimer(
+			MainMenuCameraTimerHandle,
+			this,
+			&AIndianPokerPlayerController::ApplyMainMenuCamera,
+			0.1f,
+			false
+		);
 	}
 
 	// 아직 UI 없고 테스트 단계면 일단 GameOnly로 잡아도 됨
@@ -502,4 +519,31 @@ void AIndianPokerPlayerController::Client_SetDisplayLastActionText_Implementatio
 	DisplayLastActionText = InText;
 
 	UE_LOG(LogTemp, Warning, TEXT("[PC][Client] DisplayLastActionText = %s"), *DisplayLastActionText);
+}
+
+void AIndianPokerPlayerController::ApplyMainMenuCamera()
+{
+	const FString CleanMapName = UGameplayStatics::GetCurrentLevelName(this, true);
+
+	if (!IsLocalController() || CleanMapName != TEXT("MainMenuMap"))
+	{
+		return;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[PC] ApplyMainMenuCamera called"));
+
+	TArray<AActor*> TaggedActors;
+	UGameplayStatics::GetAllActorsWithTag(this, TEXT("MainMenuCamera"), TaggedActors);
+
+	UE_LOG(LogTemp, Warning, TEXT("[PC] Tagged MainMenuCamera actors=%d"), TaggedActors.Num());
+
+	if (TaggedActors.Num() > 0 && TaggedActors[0])
+	{
+		SetViewTargetWithBlend(TaggedActors[0], 0.0f);
+		UE_LOG(LogTemp, Warning, TEXT("[PC] MainMenu camera applied: %s"), *GetNameSafe(TaggedActors[0]));
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[PC] MainMenu camera not found by tag"));
+	}
 }

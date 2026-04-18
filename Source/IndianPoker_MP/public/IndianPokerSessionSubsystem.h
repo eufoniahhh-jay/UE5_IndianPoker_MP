@@ -18,6 +18,9 @@ struct FSessionRowData
 	FString HostName = TEXT("Unknown");
 
 	UPROPERTY(BlueprintReadOnly)
+	FString SessionName;
+
+	UPROPERTY(BlueprintReadOnly)
 	int32 CurrentPlayers = 0;
 
 	UPROPERTY(BlueprintReadOnly)

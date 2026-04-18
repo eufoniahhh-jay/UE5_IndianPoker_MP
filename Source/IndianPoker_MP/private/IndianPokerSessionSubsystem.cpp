@@ -6,6 +6,8 @@
 #include "OnlineSubsystemUtils.h"
 #include "Engine/Engine.h"
 #include "Kismet/GameplayStatics.h"
+#include "IndianPokerPlayerController.h"
+#include "IndianPokerPlayerState.h"
 
 const FName UIndianPokerSessionSubsystem::IndianPokerSessionName(TEXT("IndianPokerSession"));
 
@@ -108,6 +110,63 @@ IOnlineSessionPtr UIndianPokerSessionSubsystem::GetSessionInterface() const
 // HostSession() + Create 콜백
 // CreateSession()은 “요청을 보냈는지”만 bool로 리턴.
 // 실제 성공 / 실패는 OnCreateSessionComplete에서 확정.
+
+//void UIndianPokerSessionSubsystem::HostSession()
+//{
+//	IOnlineSessionPtr SI = GetSessionInterface();
+//	if (!SI.IsValid()) return;
+//
+//	FOnlineSessionSettings Settings;
+//	Settings.bIsLANMatch = bIsLAN;
+//	Settings.NumPublicConnections = HostMaxPlayers;
+//	Settings.bAllowJoinInProgress = true;
+//	Settings.bShouldAdvertise = true;
+//
+//	Settings.bUsesPresence = false;
+//	Settings.bUseLobbiesIfAvailable = false;
+//	Settings.bAllowJoinViaPresence = false;
+//
+//	CreateSessionCompleteHandle = SI->AddOnCreateSessionCompleteDelegate_Handle(CreateSessionCompleteDelegate);
+//
+//	// Day25. 세션 생성시 sessionName을 넣을건데, 우선 Host PlayerID 가져오기
+//	Settings.bIsLANMatch = true;
+//	Settings.NumPublicConnections = 2;
+//
+//	APlayerController* LocalPC = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
+//	APlayerState* LocalPS = LocalPC ? LocalPC->PlayerState : nullptr;
+//	const int32 HostPlayerId = LocalPS ? LocalPS->GetPlayerId() : -1;
+//	const bool bIsPvE = (SelectedMatchMode == EIndianPokerMatchMode::PvE);
+//
+//	FString SessionName;
+//	if (HostPlayerId >= 0)
+//	{
+//		SessionName = FString::Printf(
+//			TEXT("%s Room %d"),
+//			bIsPvE ? TEXT("PvE") : TEXT("PvP"),
+//			HostPlayerId);
+//	}
+//	else
+//	{
+//		SessionName = bIsPvE ? TEXT("PvE Room") : TEXT("PvP Room");
+//	}
+//
+//	Settings.Set(
+//		FName("SESSION_NAME"),
+//		SessionName,
+//		EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+//
+//
+//	UE_LOG(LogTemp, Warning, TEXT("[SessionSub][%s] HostSession -> CreateSession request (LAN=%d Max=%d)"),
+//		*NetModeToStr(GetWorld()), bIsLAN ? 1 : 0, HostMaxPlayers);
+//
+//	//const bool bRequestSent = SI->CreateSession(0, IndianPokerSessionName, Settings);
+//	const bool bRequestSent = SI->CreateSession(0, NAME_GameSession, Settings);
+//	if (!bRequestSent)
+//	{
+//		UE_LOG(LogTemp, Error, TEXT("[SessionSub][%s] CreateSession request FAILED to send"), *NetModeToStr(GetWorld()));
+//		SI->ClearOnCreateSessionCompleteDelegate_Handle(CreateSessionCompleteHandle);
+//	}
+//}
 void UIndianPokerSessionSubsystem::HostSession()
 {
 	IOnlineSessionPtr SI = GetSessionInterface();
@@ -118,17 +177,39 @@ void UIndianPokerSessionSubsystem::HostSession()
 	Settings.NumPublicConnections = HostMaxPlayers;
 	Settings.bAllowJoinInProgress = true;
 	Settings.bShouldAdvertise = true;
-
 	Settings.bUsesPresence = false;
 	Settings.bUseLobbiesIfAvailable = false;
 	Settings.bAllowJoinViaPresence = false;
 
 	CreateSessionCompleteHandle = SI->AddOnCreateSessionCompleteDelegate_Handle(CreateSessionCompleteDelegate);
 
-	UE_LOG(LogTemp, Warning, TEXT("[SessionSub][%s] HostSession -> CreateSession request (LAN=%d Max=%d)"),
-		*NetModeToStr(GetWorld()), bIsLAN ? 1 : 0, HostMaxPlayers);
+	// Day25. 세션 생성시 sessionName을 넣을건데, 우선 Host PlayerID 가져오기
+	APlayerController* LocalPC = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
+	APlayerState* LocalPS = LocalPC ? LocalPC->PlayerState : nullptr;
+	const int32 HostPlayerId = LocalPS ? LocalPS->GetPlayerId() : -1;
+	const bool bIsPvE = (SelectedMatchMode == EIndianPokerMatchMode::PvE);
 
-	//const bool bRequestSent = SI->CreateSession(0, IndianPokerSessionName, Settings);
+	FString SessionName;
+	if (HostPlayerId >= 0)
+	{
+		SessionName = FString::Printf(
+			TEXT("%s Room %d"),
+			bIsPvE ? TEXT("PvE") : TEXT("PvP"),
+			HostPlayerId);
+	}
+	else
+	{
+		SessionName = bIsPvE ? TEXT("PvE Room") : TEXT("PvP Room");
+	}
+
+	Settings.Set(
+		FName("SESSION_NAME"),
+		SessionName,
+		EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+
+	UE_LOG(LogTemp, Warning, TEXT("[SessionSub][%s] HostSession -> SessionName=%s"),
+		*NetModeToStr(GetWorld()), *SessionName);
+
 	const bool bRequestSent = SI->CreateSession(0, NAME_GameSession, Settings);
 	if (!bRequestSent)
 	{
@@ -250,13 +331,29 @@ void UIndianPokerSessionSubsystem::OnFindSessionsComplete(bool bWasSuccessful)
 				HostName = TEXT("UnknownHost");
 			}
 
+			// Day26. SessionName
+			FString SessionName;
+			if (!SearchResult.Session.SessionSettings.Get(FName("SESSION_NAME"), SessionName))
+			{
+				SessionName = TEXT("");
+			}
+
 			// Players
 			const int32 MaxPlayers = SearchResult.Session.SessionSettings.NumPublicConnections;
 			const int32 OpenConnections = SearchResult.Session.NumOpenPublicConnections;
-			const int32 CurrentPlayers = FMath::Max(0, MaxPlayers - OpenConnections);
+			//const int32 CurrentPlayers = MaxPlayers - OpenConnections;
+			//const int32 CurrentPlayers = FMath::Max(0, MaxPlayers - OpenConnections);
+			// OSS Null/LAN에서는 Host가 자동으로 CurrentPlayers에 반영되지 않는 경우가 있어서
+			// 방 목록 표시용으로는 최소 1명(Host)을 보장
+			const int32 RawCurrentPlayers = MaxPlayers - OpenConnections;
+			const int32 CurrentPlayers = FMath::Clamp(
+				SearchResult.Session.OwningUserName.IsEmpty() ? RawCurrentPlayers : RawCurrentPlayers + 1,
+				1,
+				MaxPlayers);
 
 			// RowData 채우기
 			RowData.HostName = HostName;
+			RowData.SessionName = SessionName;
 			RowData.CurrentPlayers = CurrentPlayers;
 			RowData.MaxPlayers = MaxPlayers;
 			RowData.Ping = SearchResult.PingInMs;
@@ -264,10 +361,13 @@ void UIndianPokerSessionSubsystem::OnFindSessionsComplete(bool bWasSuccessful)
 
 			CachedRowData.Add(RowData);
 
-			UE_LOG(LogTemp, Warning, TEXT("[SessionSub][%s] Result[%d] Host=%s Players=%d/%d Ping=%d"),
+			UE_LOG(LogTemp, Warning,
+				TEXT("[SessionSub][%s] Result[%d] Host=%s SessionName=%s Open=%d Players=%d/%d Ping=%d"),
 				*NetModeToStr(GetWorld()),
 				i,
 				*RowData.HostName,
+				*RowData.SessionName,
+				OpenConnections,
 				RowData.CurrentPlayers,
 				RowData.MaxPlayers,
 				RowData.Ping);

@@ -455,8 +455,12 @@ void AIndianPokerGameModeBase::StartRound()
 	P1->CurrentRoundContribution = 0;
 	P2->CurrentRoundContribution = 0;
 
-	GenerateDeck();
-	ShuffleDeck();
+	if (Deck.Num() < 2)
+	{
+		GenerateDeck();
+		ShuffleDeck();
+		PlaySFXForAllPlayers(EIndianPokerSFXType::Shuffle);
+	}
 	DealCards();
 	SetVisibleOpponentCards();
 	SendVisibleOpponentCardsToClients();
@@ -1148,7 +1152,6 @@ bool AIndianPokerGameModeBase::HandleAction_Check(
 			AuthFirstActorPlayerId);
 		return false;
 	}
-
 	
 	/*if (RequiredToCall != 0)
 	{
@@ -1193,6 +1196,9 @@ bool AIndianPokerGameModeBase::HandleAction_Check(
 	/*AIndianPokerPlayerState* P1 = nullptr;
 	AIndianPokerPlayerState* P2 = nullptr;
 	GetCachedRoundPlayers(P1, P2);*/
+
+	// Day26. 액션 확정 지점에 사운드 재생 추가
+	PlaySFXForAllPlayers(EIndianPokerSFXType::Check);
 
 	// Day23. 공용 LastActionText를 UI용으로 쓰지 말고,바로 각 플레이어에게 표시용 문구를 보내기로 수정.
 	const FString P1Text = FString::Printf(
@@ -1259,6 +1265,9 @@ bool AIndianPokerGameModeBase::HandleAction_CheckCall(
 	// Day13. 베팅 종료 후 AuthCurrentActorPlayerId 정리. 
 	AuthCurrentActorPlayerId = INDEX_NONE;
 
+	// Day26. 액션 확정 지점에 사운드 재생 추가
+	PlaySFXForAllPlayers(EIndianPokerSFXType::Call);
+
 	// Day14. HUD
 	//LastActionText = FString::Printf(TEXT("Player %d Check-Called"), RequestingPS->GetPlayerId());
 	// Day23. 공용 LastActionText를 UI용으로 쓰지 말고,바로 각 플레이어에게 표시용 문구를 보내기로 수정.
@@ -1310,6 +1319,9 @@ bool AIndianPokerGameModeBase::HandleAction_Fold(
 
 	UE_LOG(LogTemp, Warning, TEXT("[Fold] PlayerId=%d folded"), RequestingPS->GetPlayerId());
 
+	// Day26. 액션 확정 지점에 사운드 재생 추가
+	PlaySFXForAllPlayers(EIndianPokerSFXType::Fold);
+
 	ResolveFoldRound(RequestingPS, OpponentPS);
 	return true;
 }
@@ -1349,6 +1361,9 @@ bool AIndianPokerGameModeBase::HandleAction_Call(
 
 	// Day13. 베팅 종료 후 AuthCurrentActorPlayerId 정리. 
 	AuthCurrentActorPlayerId = INDEX_NONE;
+
+	// Day26. 액션 확정 지점에 사운드 재생 추가
+	PlaySFXForAllPlayers(EIndianPokerSFXType::Call);
 
 	// Day14. HUD
 	/*LastActionText = FString::Printf(
@@ -1452,6 +1467,9 @@ bool AIndianPokerGameModeBase::HandleAction_Raise(
 	Pot += TotalPay;
 
 	AuthCurrentActorPlayerId = OpponentPS->GetPlayerId();
+
+	// Day26. 액션 확정 지점에 사운드 재생 추가
+	PlaySFXForAllPlayers(EIndianPokerSFXType::Raise);
 
 	// Day14. HUD
 	/*LastActionText = FString::Printf(
@@ -1623,6 +1641,9 @@ void AIndianPokerGameModeBase::ResolveShowdown()
 		UE_LOG(LogTemp, Warning, TEXT("[Showdown] Failed - P1 or P2 is null"));
 		return;
 	}
+
+	// Day26. 액션 확정 지점에 사운드 재생 추가
+	PlaySFXForAllPlayers(EIndianPokerSFXType::ShowdownChips);
 
 	// Day17. showdown 들어온 순간 카드 공개 
 	if (P1WorldCard) {
@@ -3943,4 +3964,25 @@ void AIndianPokerGameModeBase::BroadcastLastActionTextToPlayers(
 void AIndianPokerGameModeBase::BroadcastSameLastActionTextToPlayers(const FString& InText)
 {
 	BroadcastLastActionTextToPlayers(InText, InText);
+}
+
+void AIndianPokerGameModeBase::PlaySFXForAllPlayers(EIndianPokerSFXType SFXType)
+{
+	TArray<APlayerController*> PlayerControllers;
+
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		APlayerController* PC = It->Get();
+		if (!PC) continue;
+
+		PlayerControllers.Add(PC);
+	}
+
+	for (APlayerController* PC : PlayerControllers)
+	{
+		AIndianPokerPlayerController* IPC = Cast<AIndianPokerPlayerController>(PC);
+		if (!IPC) continue;
+
+		IPC->Client_PlaySFX(SFXType);
+	}
 }

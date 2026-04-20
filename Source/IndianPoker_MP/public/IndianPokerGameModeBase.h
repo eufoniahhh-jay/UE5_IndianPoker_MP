@@ -7,12 +7,13 @@
 #include "IndianPokerGameStateBase.h"
 #include "BettingTypes.h"
 #include "IndianPokerMatchTypes.h"
+#include "IndianPokerPlayerController.h"
 #include "IndianPokerGameModeBase.generated.h"
 
 class AIndianPokerGameStateBase;
 class AIndianPokerPlayerState;
-class AIndianPokerPlayerController;
 class ACardActor;
+//class AIndianPokerPlayerController;
 
 // GamePhase enum을 GameState 헤더에 정의할 예정이므로,
 // 여기서는 GameState 헤더 include를 cpp에서 하고 forward 선언만 둠.
@@ -333,4 +334,8 @@ public:
 		const FString& P2Text);
 
 	void BroadcastSameLastActionTextToPlayers(const FString& InText);
+
+public:
+	// Day26. 양쪽 플레이어에게 인게임 사운드 재생 요청
+	void PlaySFXForAllPlayers(EIndianPokerSFXType SFXType);
 };

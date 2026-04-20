@@ -7,11 +7,20 @@
 #include "InputActionValue.h"
 #include "BettingTypes.h"
 #include "Blueprint/UserWidget.h"
+#include "Sound/SoundBase.h"
+#include "Components/AudioComponent.h"
 #include "IndianPokerPlayerController.generated.h"
 
-/**
- * 
- */
+UENUM(BlueprintType)
+enum class EIndianPokerSFXType : uint8
+{
+	Check,
+	Call,
+	Raise,
+	Fold,
+	ShowdownChips,
+	Shuffle
+};
 
 class UInputMappingContext;
 class UInputAction;
@@ -162,4 +171,42 @@ public:
 	// Day24. 맵마다 카메라 적용을 다르게
 	UFUNCTION()
 	void ApplyMainMenuCamera();
+
+public:
+	// Day26. 사운드 적용
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Audio", meta = (AllowPrivateAccess = "true"))
+	USoundBase* BGM_MainMenuLobby = nullptr;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Audio", meta = (AllowPrivateAccess = "true"))
+	USoundBase* BGM_GameMap = nullptr;
+
+	UPROPERTY()
+	UAudioComponent* BGMComponent = nullptr;
+
+	// 사운드 재생용 Client RPC
+	UFUNCTION(Client, Reliable)
+	void Client_PlaySFX(EIndianPokerSFXType SFXType);
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Audio", meta = (AllowPrivateAccess = "true"))
+	USoundBase* SFX_Bet_Check = nullptr;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Audio", meta = (AllowPrivateAccess = "true"))
+	USoundBase* SFX_Bet_Call = nullptr;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Audio", meta = (AllowPrivateAccess = "true"))
+	USoundBase* SFX_Bet_Raise = nullptr;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Audio", meta = (AllowPrivateAccess = "true"))
+	USoundBase* SFX_Bet_Fold = nullptr;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Audio", meta = (AllowPrivateAccess = "true"))
+	USoundBase* SFX_ShowdownChips = nullptr;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Audio", meta = (AllowPrivateAccess = "true"))
+	USoundBase* SFX_Shuffle = nullptr;
+
+protected:
+
+	void PlayMapBGM();
+	void StopMapBGM();
 };

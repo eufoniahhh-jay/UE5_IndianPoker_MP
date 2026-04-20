@@ -20,6 +20,8 @@
 #include "BettingTypes.h"
 #include "Camera/CameraActor.h"
 #include "TimerManager.h"
+#include "Components/AudioComponent.h"
+#include "Sound/SoundBase.h"
 
 void AIndianPokerPlayerController::BeginPlay()
 {
@@ -47,6 +49,9 @@ void AIndianPokerPlayerController::BeginPlay()
 		*MapName, NetModeStr, bAuth ? 1 : 0, bLocal ? 1 : 0, *GetName());
 
 	UE_LOG(LogTemp, Warning, TEXT("[PC][%s] Class=%s"), NetModeStr, *GetClass()->GetPathName());
+
+	// Day26. BGM 사운드 적용
+	PlayMapBGM();
 
 	// 로컬 플레이어(각 창)에서만 매핑 추가
 	if (ULocalPlayer* LP = GetLocalPlayer())
@@ -546,4 +551,85 @@ void AIndianPokerPlayerController::ApplyMainMenuCamera()
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[PC] MainMenu camera not found by tag"));
 	}
+}
+
+void AIndianPokerPlayerController::StopMapBGM()
+{
+	if (BGMComponent)
+	{
+		BGMComponent->Stop();
+		BGMComponent = nullptr;
+	}
+}
+
+void AIndianPokerPlayerController::PlayMapBGM()
+{
+	if (!IsLocalController())
+	{
+		return;
+	}
+
+	StopMapBGM();
+
+	const FString CleanMapName = UGameplayStatics::GetCurrentLevelName(this, true);
+
+	USoundBase* SelectedBGM = nullptr;
+
+	if (CleanMapName == TEXT("MainMenuMap") || CleanMapName == TEXT("LobbyMap"))
+	{
+		SelectedBGM = BGM_MainMenuLobby;
+	}
+	else if (CleanMapName == TEXT("GameMap"))
+	{
+		SelectedBGM = BGM_GameMap;
+	}
+
+	if (!SelectedBGM)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[PC][Audio] No BGM assigned for map: %s"), *CleanMapName);
+		return;
+	}
+
+	BGMComponent = UGameplayStatics::SpawnSound2D(this, SelectedBGM, 0.3f, 1.0f, 0.0f, nullptr, false);
+	if (BGMComponent)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[PC][Audio] BGM started on map: %s"), *CleanMapName);
+	}
+}
+
+void AIndianPokerPlayerController::Client_PlaySFX_Implementation(EIndianPokerSFXType SFXType)
+{
+	USoundBase* SelectedSFX = nullptr;
+
+	switch (SFXType)
+	{
+	case EIndianPokerSFXType::Check:
+		SelectedSFX = SFX_Bet_Check;
+		break;
+	case EIndianPokerSFXType::Call:
+		SelectedSFX = SFX_Bet_Call;
+		break;
+	case EIndianPokerSFXType::Raise:
+		SelectedSFX = SFX_Bet_Raise;
+		break;
+	case EIndianPokerSFXType::Fold:
+		SelectedSFX = SFX_Bet_Fold;
+		break;
+	case EIndianPokerSFXType::ShowdownChips:
+		SelectedSFX = SFX_ShowdownChips;
+		break;
+	case EIndianPokerSFXType::Shuffle:
+		SelectedSFX = SFX_Shuffle;
+		break;
+	default:
+		break;
+	}
+
+	if (!SelectedSFX)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[PC][Audio] SelectedSFX is null"));
+		return;
+	}
+
+	UGameplayStatics::PlaySound2D(this, SelectedSFX, 1.0f);
 }

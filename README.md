@@ -1,4 +1,4 @@
-# UE5 Multiplayer Indian Poker
+# Indian Poker Multiplay Game (UE5)
 
 Unreal Engine 5 기반의 1:1 인디언 포커 멀티플레이 프로젝트입니다.  
 Listen Server 기반 PvP / PvE 모드를 지원합니다.
@@ -322,6 +322,7 @@ Epic Games Fab 무료 애셋
 BGM
 - https://freesound.org/people/ShadyDave/sounds/325647/
 - https://freesound.org/people/joshuaempyre/sounds/250749/
+
 효과음
 - https://elevenlabs.io 에서 생성
 

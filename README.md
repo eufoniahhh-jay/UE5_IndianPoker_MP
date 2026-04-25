@@ -2,6 +2,7 @@
 
 Unreal Engine 5 기반의 1:1 인디언 포커 멀티플레이 프로젝트입니다.  
 Listen Server 기반 PvP / PvE 모드를 지원합니다.
+
 플레이 영상 : https://www.youtube.com/watch?v=dQ6nPUN19NE
 
 <br/>
